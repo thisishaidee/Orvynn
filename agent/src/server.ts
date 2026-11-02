@@ -6,6 +6,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 const PORT = Number(process.env.PORT ?? 8787);
 const HOST = process.env.HOST ?? "127.0.0.1";
 const API_TOKEN = process.env.AGENT_API_TOKEN;
+const ALLOWED_BODY_KEYS = new Set(["leaseId", "delegate", "recipient", "amountUsdc", "purpose"]);
 
 type PaymentRequestBody = {
   leaseId: string;
@@ -44,13 +45,17 @@ function parsePaymentRequest(value: unknown): PaymentRequestBody {
     throw new Error("Provide a JSON object with leaseId, delegate, recipient and amountUsdc.");
   }
   const body = value as Record<string, unknown>;
+  const unexpectedKeys = Object.keys(body).filter((key) => !ALLOWED_BODY_KEYS.has(key));
+  if (unexpectedKeys.length > 0) {
+    throw new Error(`Unexpected request field(s): ${unexpectedKeys.join(", ")}.`);
+  }
   const required = ["leaseId", "delegate", "recipient", "amountUsdc"] as const;
   for (const key of required) {
     if (typeof body[key] !== "string" || body[key].trim() === "") {
       throw new Error(`'${key}' must be a non-empty string.`);
     }
   }
-  if (!/^\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) {
+  if (!/^\\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) {
     throw new Error("'leaseId' must be a positive integer string.");
   }
   if (body.purpose !== undefined && (typeof body.purpose !== "string" || body.purpose.length > 240)) {
@@ -78,12 +83,17 @@ async function handle(request: IncomingMessage, response: ServerResponse): Promi
     return;
   }
 
+  if (process.env.NODE_ENV === "production" && !API_TOKEN) {
+    send(response, 503, { error: "Configure AGENT_API_TOKEN before exposing this service." });
+    return;
+  }
   if (API_TOKEN && request.headers.authorization !== `Bearer ${API_TOKEN}`) {
     send(response, 401, { error: "Missing or invalid API token." });
     return;
   }
-  if (process.env.NODE_ENV === "production" && !API_TOKEN) {
-    send(response, 503, { error: "Configure AGENT_API_TOKEN before exposing this service." });
+  const contentType = request.headers["content-type"]?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") {
+    send(response, 415, { error: "Content-Type must be application/json." });
     return;
   }
 
