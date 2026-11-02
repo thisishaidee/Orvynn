@@ -57,7 +57,7 @@ function parseBody(value: unknown) {
   for (const key of ["leaseId", "delegate", "recipient", "amountUsdc"] as const) {
     if (typeof body[key] !== "string" || body[key].trim() === "") throw new Error(`'${key}' must be a non-empty string.`);
   }
-  if (!/^\\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) throw new Error("'leaseId' must be a positive integer string.");
+  if (!/^\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) throw new Error("'leaseId' must be a positive integer string.");
   if (body.purpose !== undefined && (typeof body.purpose !== "string" || body.purpose.length > 240)) throw new Error("'purpose' must be a string of at most 240 characters.");
   return {
     leaseId: BigInt(body.leaseId as string),
