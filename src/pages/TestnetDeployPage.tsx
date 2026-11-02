@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { CheckCircle2, ExternalLink, FileCheck, Rocket, ShieldAlert } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { createPublicClient, erc20Abi, formatUnits, http, keccak256 } from 'viem'
@@ -20,18 +20,29 @@ const client = createPublicClient({ chain: arcTestnet, transport: http(ARC_TESTN
 const ABI = artifact.abi as never[]
 const BYTECODE = artifact.bytecode as `0x${string}`
 const EXPLORER = 'https://testnet.arcscan.app'
+const PENDING_TX_KEY = 'orvynn.arc-testnet-deployment.pending.v1'
+
+function readPendingHash(): `0x${string}` | undefined {
+  try {
+    const value = window.localStorage.getItem(PENDING_TX_KEY)
+    return value && /^0x[0-9a-fA-F]{64}$/.test(value) ? value as `0x${string}` : undefined
+  } catch {
+    return undefined
+  }
+}
 
 export function TestnetDeployPage() {
   const { address, isConnected, chainId } = useAccount()
   const { data: walletClient } = useConnectorClient()
   const { switchChain } = useSwitchChain()
-  const [phase, setPhase] = useState<TestnetDeployPhase>('review')
+  const [initialHash] = useState(readPendingHash)
+  const [phase, setPhase] = useState<TestnetDeployPhase>(() => initialHash ? 'pending' : 'review')
   const [checking, setChecking] = useState(false)
   const [usdcVerified, setUsdcVerified] = useState(false)
   const [usdcDetail, setUsdcDetail] = useState('Not checked')
   const [gasEstimate, setGasEstimate] = useState<bigint>()
   const [gasPrice, setGasPrice] = useState<bigint>()
-  const [txHash, setTxHash] = useState<`0x${string}`>()
+  const [txHash, setTxHash] = useState<`0x${string}`>(initialHash)
   const [contractAddress, setContractAddress] = useState<`0x${string}`>()
   const [problem, setProblem] = useState<string>()
   const bytecodeHash = useMemo(() => keccak256(BYTECODE), [])
@@ -81,6 +92,7 @@ export function TestnetDeployPage() {
     const receipt = await client.waitForTransactionReceipt({ hash })
     if (receipt.status !== 'success') {
       setPhase('failed')
+      try { window.localStorage.removeItem(PENDING_TX_KEY) } catch { /* storage may be unavailable */ }
       throw new Error('Deployment transaction reverted. No contract was created.')
     }
     if (!receipt.contractAddress) throw new Error('Receipt succeeded but did not contain a contract address.')
@@ -98,8 +110,27 @@ export function TestnetDeployPage() {
     if (nextLeaseId !== 1n) throw new Error('The deployed contract has an unexpected initial lease ID.')
     setContractAddress(receipt.contractAddress)
     setPhase('deployed')
+    try { window.localStorage.removeItem(PENDING_TX_KEY) } catch { /* storage may be unavailable */ }
     return receipt.contractAddress
   }, [])
+
+  const retryVerification = useCallback(async () => {
+    if (!txHash) return
+    setProblem(undefined)
+    try {
+      const tx = await client.getTransaction({ hash: txHash })
+      await verifyReceipt(txHash, tx.from)
+      toast.success('Orvynn testnet contract verified.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Receipt or contract verification is still pending.'
+      setProblem(message)
+      toast.error(message)
+    }
+  }, [txHash, verifyReceipt])
+
+  useEffect(() => {
+    if (initialHash) void retryVerification()
+  }, [initialHash, retryVerification])
 
   const deploy = useCallback(async () => {
     if (!walletClient || !address || !canStartTestnetDeployment({ phase, account: address, chainId, usdcVerified, gasEstimate })) return
@@ -113,6 +144,7 @@ export function TestnetDeployPage() {
       const gas = (gasEstimate! * 120n + 99n) / 100n
       const hash = await deployContract(walletClient, { abi: ABI, bytecode: BYTECODE, chain: arcTestnet, gas })
       setTxHash(hash)
+      try { window.localStorage.setItem(PENDING_TX_KEY, hash) } catch { /* keep in-memory tracking if storage is unavailable */ }
       setPhase('pending')
       toast.info('Testnet deployment submitted. Waiting for confirmation and verification.')
       try {
@@ -184,7 +216,7 @@ export function TestnetDeployPage() {
         ) : (
           <div className="space-y-3">
             {phase === 'signing' && <Notice tone="info">Waiting for wallet confirmation. Review the network and gas fee in your wallet.</Notice>}
-            {phase === 'pending' && <Notice tone="warning" title="Transaction submitted">Do not submit another deployment. This page is waiting for verification. Transaction: {txHash}</Notice>}
+            {phase === 'pending' && <div className="space-y-2"><Notice tone="warning" title="Transaction submitted">Do not submit another deployment. This page is tracking the transaction. Transaction: {txHash}</Notice><Button variant="secondary" onClick={retryVerification}>Retry receipt and contract verification</Button></div>}
             {phase === 'failed' && <Notice tone="danger">The deployment transaction reverted. Review the failure before trying again.</Notice>}
             <Button onClick={deploy} disabled={!canDeploy || checking || phase === 'signing'}>
               <Rocket className="size-4" /> Deploy to Arc Testnet
