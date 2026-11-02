@@ -90,8 +90,8 @@ describe('allowlist read failure', () => {
   })
 })
 
-describe('bounded multi-event log reads', () => {
-  test('uses one event query and respects a pinned snapshot', async () => {
+describe('bounded event log reads', () => {
+  test('uses a lease-ID indexed event filter and respects a pinned snapshot', async () => {
     const calls: Array<Record<string, unknown>> = []
     const client = {
       getLogs: async (params: Record<string, unknown>) => {
@@ -100,14 +100,15 @@ describe('bounded multi-event log reads', () => {
       },
     } as unknown as PublicClient
 
-    const events = [
-      { type: 'event', name: 'Deposited', inputs: [] },
-      { type: 'event', name: 'Spent', inputs: [] },
-    ] as never
+    const event = {
+      type: 'event',
+      name: 'Deposited',
+      inputs: [{ name: 'leaseId', type: 'uint256', indexed: true }],
+    } as never
 
     await expect(getLogsChunked(client, {
       address: '0x0000000000000000000000000000000000000001' as Address,
-      events,
+      event,
       args: { leaseId: [1n, 2n] },
       fromBlock: 10n,
       toBlock: 20n,
@@ -116,7 +117,7 @@ describe('bounded multi-event log reads', () => {
     expect(calls).toHaveLength(1)
     expect(calls[0].fromBlock).toBe(10n)
     expect(calls[0].toBlock).toBe(20n)
-    expect(calls[0].events).toEqual(events)
+    expect(calls[0].event).toEqual(event)
     expect(calls[0].args).toEqual({ leaseId: [1n, 2n] })
   })
 })
