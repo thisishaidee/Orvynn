@@ -2,7 +2,7 @@ name: AgentPay CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, audit/api-hardening]
   push:
     branches: [main, studio-sync, feature/payment-integration]
 
