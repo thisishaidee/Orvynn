@@ -23,6 +23,44 @@ export type LogQuery = {
   toBlock?: bigint
 }
 
+/**
+ * Only split requests when the provider explicitly signals a query/range limit.
+ * Rate limits, timeouts and transport failures must fail fast so recursive
+ * splitting does not amplify pressure on an already unhealthy RPC endpoint.
+ */
+function isRangeLimitError(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  const parts: string[] = []
+  const pending: unknown[] = [error]
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === null || current === undefined || seen.has(current)) continue
+    if (typeof current === 'string') {
+      parts.push(current)
+      continue
+    }
+    if (typeof current !== 'object') continue
+    seen.add(current)
+
+    const value = current as Record<string, unknown>
+    for (const key of ['message', 'shortMessage', 'details', 'code', 'status', 'statusCode']) {
+      const item = value[key]
+      if (typeof item === 'string' || typeof item === 'number') parts.push(String(item))
+    }
+    for (const key of ['cause', 'error', 'data']) {
+      if (value[key] && typeof value[key] === 'object') pending.push(value[key])
+    }
+  }
+
+  const detail = parts.join(' ').toLowerCase()
+  return (
+    /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range/.test(detail)
+    || /(?:^|\\s)413(?:\\s|$)/.test(detail)
+    || /(?:^|\\s)-32005(?:\\s|$)/.test(detail)
+  )
+}
+
 export async function getLogsChunked(client: PublicClient, params: LogQuery) {
   const { fromBlock: startBlock, toBlock, ...query } = params
 
@@ -51,8 +89,11 @@ export async function getLogsChunked(client: PublicClient, params: LogQuery) {
     try {
       return await client.getLogs({ ...query, fromBlock: from, toBlock: to } as never)
     } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      if (!isRangeLimitError(error)) {
+        throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
+      }
       if (to - from + 1n <= MIN_CHUNK) {
-        const detail = error instanceof Error ? error.message : String(error)
         throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
       }
 
