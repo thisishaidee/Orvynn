@@ -98,6 +98,45 @@ describe('large bounded log ranges', () => {
     ])
   })
 
+
+  test('does not split a rate-limited request into more RPC calls', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        throw new Error('HTTP 429: rate limit exceeded')
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).rejects.toThrow(/rate limit exceeded/)
+
+    expect(ranges).toEqual([[0n, 49_999n]])
+  })
+
+  test('does not split a timed-out request into more RPC calls', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        throw new Error('request timed out')
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).rejects.toThrow(/timed out/)
+
+    expect(ranges).toEqual([[0n, 49_999n]])
+  })
+
   test('splits a rejected large range and still returns the complete result', async () => {
     const ranges: Array<[bigint, bigint]> = []
     const client = {
