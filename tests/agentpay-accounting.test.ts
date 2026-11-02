@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { Address, PublicClient } from 'viem'
+import type { Address, Hex, PublicClient } from 'viem'
 import { activityAgent, currentPeriodSpent, currentWindowIndex } from '../src/lib/agentpay-accounting'
 import { getLogsChunked } from '../src/lib/agentpay-logs'
 
