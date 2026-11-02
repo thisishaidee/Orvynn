@@ -55,7 +55,7 @@ function parsePaymentRequest(value: unknown): PaymentRequestBody {
       throw new Error(`'${key}' must be a non-empty string.`);
     }
   }
-  if (!/^\\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) {
+  if (!/^\d+$/.test(body.leaseId as string) || BigInt(body.leaseId as string) <= 0n) {
     throw new Error("'leaseId' must be a positive integer string.");
   }
   if (body.purpose !== undefined && (typeof body.purpose !== "string" || body.purpose.length > 240)) {
