@@ -85,7 +85,7 @@ export function LeasesPage() {
       writeArchivedLeaseIds(window.localStorage, storageKey, next)
       setArchiveState({ key: storageKey, ids: next })
       toast.success(archived ? 'Lease ' + lease.id + ' archived' : 'Lease ' + lease.id + ' restored', {
-        description: 'Saved in this browser for this wallet and network. The on-chain lease is unchanged.',
+        description: 'Saved on this site in this browser for this wallet and network. The on-chain lease is unchanged.',
       })
     } catch {
       toast.error('Could not save this archive change', { description: 'Your on-chain lease is unaffected.' })
@@ -177,7 +177,7 @@ export function LeasesPage() {
 
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-line bg-gradient-to-r from-brand-mist/70 to-transparent p-4 sm:p-5 lg:p-6">
-          <CardHeader title="Your leases" description="Monitor spending limits, expiry dates and agent permissions. Archive preferences stay in this browser for this wallet and network." className="mb-0" />
+          <CardHeader title="Your leases" description="Monitor spending limits, expiry dates and agent permissions. Archive preferences are saved on this site in this browser for this wallet and network." className="mb-0" />
           <div role="tablist" aria-label="Filter leases by status" className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
             {FILTERS.map((f) => (
               <button
