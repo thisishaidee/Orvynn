@@ -42,7 +42,7 @@ export function TestnetDeployPage() {
   const [usdcDetail, setUsdcDetail] = useState('Not checked')
   const [gasEstimate, setGasEstimate] = useState<bigint>()
   const [gasPrice, setGasPrice] = useState<bigint>()
-  const [txHash, setTxHash] = useState<`0x${string}`>(initialHash)
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(initialHash)
   const [contractAddress, setContractAddress] = useState<`0x${string}`>()
   const [problem, setProblem] = useState<string>()
   const bytecodeHash = useMemo(() => keccak256(BYTECODE), [])
