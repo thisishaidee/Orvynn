@@ -40,16 +40,16 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="USDC balance" value={balance.state === 'ready' ? balance.formatted : undefined} unit="USDC" loading={balance.state === 'loading'} hint={balance.state === 'error' ? 'Balance read failed.' : balance.state === 'unsupported-network' ? 'Switch to Arc to read balance.' : 'Wallet balance on the connected Arc network.'} />
-        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} loading={leases.state === 'loading'} hint="Permissions created from this wallet" />
+        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} loading={leases.state === 'loading'} hint={leases.state === 'loading' ? 'Reading your on-chain leases…' : leases.state === 'error' ? 'Could not load leases. Retry below.' : 'Permissions created from this wallet'} />
         <StatCard label="Active leases" value={activeLeaseCount} loading={leases.state === 'loading'} hint="Currently within their rules" />
-        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} loading={activity.state === 'loading'} hint="Events read from the contract" />
+        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} loading={activity.state === 'loading'} hint={activity.state === 'loading' ? 'Reading contract events…' : activity.state === 'error' ? 'Could not load activity. Retry below.' : 'Events read from the contract'} />
       </div>
       {(balance.state === 'error' || leases.state === 'error' || activity.state === 'error') && (
         <Notice tone="danger" title="Some dashboard data could not be loaded">
           <div className="space-y-1 text-support">
             {balance.state === 'error' && <p>USDC balance: RPC read failed. <button className="underline" onClick={balance.refetch}>Try again</button></p>}
-            {leases.state === 'error' && <p>Leases: {leases.reason}</p>}
-            {activity.state === 'error' && <p>Activity: {activity.reason}</p>}
+            {leases.state === 'error' && <p>Leases: {leases.reason} <button className="ml-2 underline" onClick={leases.refetch}>Try again</button></p>}
+            {activity.state === 'error' && <p>Activity: {activity.reason} <button className="ml-2 underline" onClick={activity.refetch}>Try again</button></p>}
           </div>
         </Notice>
       )}
