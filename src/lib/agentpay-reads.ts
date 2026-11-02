@@ -273,18 +273,23 @@ async function discoverActivity(
   const byId = new Map<string, Lease>()
   if (leaseIds.length === 0) return []
   // Reuse LeaseCreated logs from lease discovery; do not scan that history twice.
-  const leaseIdFilter = { leaseId: leaseIds }
-  // Independent event scans share one fixed block snapshot and run concurrently.
-  const [deposited, withdrawn, spent, revoked, allowlist] = await Promise.all([
-    getLogsChunked(client, { address: contract, event: eventAbi('Deposited') as never, args: { owner, ...leaseIdFilter }, fromBlock, toBlock }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Withdrawn') as never, args: { owner, ...leaseIdFilter }, fromBlock, toBlock }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Spent') as never, args: leaseIdFilter, fromBlock, toBlock }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Revoked') as never, args: leaseIdFilter, fromBlock, toBlock }),
-    getLogsChunked(client, { address: contract, event: eventAbi('AllowlistUpdated') as never, args: leaseIdFilter, fromBlock, toBlock }),
-  ])
+  // Fetch all activity event types in one topic-filtered RPC scan.
+  // Filtering by lease ID and owner happens locally after decoding.
+  const activityLogs = await getLogsChunked(client, {
+    address: contract,
+    events: [
+      eventAbi('Deposited'),
+      eventAbi('Withdrawn'),
+      eventAbi('Spent'),
+      eventAbi('Revoked'),
+      eventAbi('AllowlistUpdated'),
+    ] as never,
+    fromBlock,
+    toBlock,
+  })
 
   const owned = new Set(leaseIds.map((id) => id.toString()))
-  const relevant = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist].filter((log) => {
+  const relevant = [...created, ...activityLogs].filter((log) => {
     const leaseId = (log as { args?: { leaseId?: bigint } }).args?.leaseId
     return leaseId !== undefined && owned.has(leaseId.toString())
   })
