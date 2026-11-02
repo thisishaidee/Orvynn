@@ -44,7 +44,7 @@ export function useUsdcBalance(): { state: BalanceState; formatted?: string; ref
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
     chainId: onArc ? chainId : arcTestnet.id,
-    query: { enabled },
+    query: { enabled, staleTime: 15_000, gcTime: 5 * 60_000, retry: 1 },
   })
 
   if (!isConnected || !address) return { state: 'disconnected', refetch: () => void refetch() }

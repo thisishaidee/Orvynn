@@ -12,6 +12,7 @@ interface Env {
 const DEFAULT_AGENTPAY = "0xA549B60313A86288d46323e5723AAa4c0fAA6363";
 const DEFAULT_USDC = "0x3600000000000000000000000000000000000000";
 const MAX_BODY_BYTES = 16 * 1024;
+const ALLOWED_BODY_KEYS = new Set(["leaseId", "delegate", "recipient", "amountUsdc", "purpose"]);
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: {
@@ -51,6 +52,8 @@ async function readBody(request: Request): Promise<unknown> {
 function parseBody(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Provide a JSON object with leaseId, delegate, recipient and amountUsdc.");
   const body = value as Record<string, unknown>;
+  const unexpectedKeys = Object.keys(body).filter((key) => !ALLOWED_BODY_KEYS.has(key));
+  if (unexpectedKeys.length > 0) throw new Error(`Unexpected request field(s): ${unexpectedKeys.join(", ")}.`);
   for (const key of ["leaseId", "delegate", "recipient", "amountUsdc"] as const) {
     if (typeof body[key] !== "string" || body[key].trim() === "") throw new Error(`'${key}' must be a non-empty string.`);
   }
@@ -72,6 +75,8 @@ export const onRequestGet = async () => {
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   if (!env.AGENT_API_TOKEN) return json({ error: "Agent API is not configured. Set AGENT_API_TOKEN as a Pages secret." }, 503);
   if (request.headers.get("authorization") !== `Bearer ${env.AGENT_API_TOKEN}`) return json({ error: "Missing or invalid API token." }, 401);
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") return json({ error: "Content-Type must be application/json." }, 415);
 
   let input: ReturnType<typeof parseBody>;
   try { input = parseBody(await readBody(request)); }

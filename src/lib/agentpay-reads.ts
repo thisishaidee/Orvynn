@@ -119,7 +119,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
       name: 'AllowlistUpdated',
       inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'AllowlistUpdated')!.inputs,
     } as never,
-    args: { leaseId: ids.length === 1 ? ids[0] : undefined },
+    args: { leaseId: ids },
     fromBlock,
   })
 
@@ -250,11 +250,10 @@ async function discoverActivity(
   client: PublicClient,
   contract: Address,
   owner: Address,
-  leases: Lease[],
+  leaseIds: bigint[],
   fromBlock: bigint,
 ): Promise<ActivityItem[]> {
-  const leaseIds = leases.map((l) => BigInt(l.id))
-  const byId = new Map(leases.map((l) => [l.id, l]))
+  const byId = new Map<string, Lease>()
 
   if (leaseIds.length === 0) return []
 
@@ -343,29 +342,38 @@ async function discoverActivity(
   })
 }
 
-export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSource<ActivityItem> {
+/**
+ * Activity has its own lightweight lease-ID discovery query. It runs in parallel
+ * with full lease hydration so slow per-lease reads do not block transaction history.
+ */
+export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   const gate = useReadGate()
   const query = useQuery({
-    queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', leases.map((l) => l.id).join(',')],
-    enabled: gate.ok && leasesReady,
-    queryFn: () => {
+    queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    enabled: gate.ok,
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    retry: 1,
+    queryFn: async () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, gate.address, leases, eventStartBlock(gate.chainId))
+      const created = await getLogsChunked(gate.client, {
+        address: gate.contract,
+        event: eventAbi('LeaseCreated') as never,
+        args: { owner: gate.address },
+        fromBlock: eventStartBlock(gate.chainId),
+      })
+      const ids = [...new Set(created
+        .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
+        .filter((id): id is bigint => id !== undefined))]
+      if (ids.length === 0) return []
+      return discoverActivity(gate.client, gate.contract, gate.address, ids, eventStartBlock(gate.chainId))
     },
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (!leasesReady) return { state: 'loading', items: [], reason: 'Waiting for lease discovery before reading activity.' }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.' }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Finding your leases and reading their activity.' }
   if (query.isError) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.' }
   }
   return { state: 'ready', items: query.data ?? [], reason: '' }
-}
-
-/** Activity for the connected owner. Waits for lease discovery so lease IDs are known. */
-export function useOwnerActivityQuery(): DataSource<ActivityItem> {
-  const leases = useOwnerLeases()
-  const ready = leases.state === 'ready'
-  return useOwnerActivity(leases.items, ready)
 }
