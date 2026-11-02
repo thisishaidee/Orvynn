@@ -15,11 +15,13 @@ export type LogQuery = {
   event: (typeof agentPayAbi)[number]
   args?: Record<string, unknown>
   fromBlock: bigint
+  /** Pin related event queries to one consistent chain snapshot. */
+  toBlock?: bigint
 }
 
 export async function getLogsChunked(client: PublicClient, params: LogQuery) {
-  const { fromBlock: startBlock, ...query } = params
-  const latest = await client.getBlockNumber()
+  const { fromBlock: startBlock, toBlock, ...query } = params
+  const latest = toBlock ?? await client.getBlockNumber()
   if (startBlock > latest) return []
 
   const logs: Awaited<ReturnType<typeof client.getLogs>> = []
