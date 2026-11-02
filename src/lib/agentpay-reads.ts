@@ -270,7 +270,11 @@ async function discoverActivity(
   client: PublicClient, contract: Address, owner: Address, leaseIds: bigint[],
   fromBlock: bigint, toBlock: bigint, created: Awaited<ReturnType<typeof getLogsChunked>>,
 ): Promise<ActivityItem[]> {
-  const byId = new Map<string, Lease>()
+  const delegateById = new Map<string, Address>()
+  for (const log of created) {
+    const args = (log as unknown as { args?: { leaseId?: bigint; delegate?: Address } }).args
+    if (args?.leaseId !== undefined && args.delegate) delegateById.set(args.leaseId.toString(), args.delegate)
+  }
   if (leaseIds.length === 0) return []
   // Reuse LeaseCreated logs from lease discovery; do not scan that history twice.
   // Fetch all activity event types in one topic-filtered RPC scan.
@@ -320,14 +324,13 @@ async function discoverActivity(
       allowed?: boolean
     }
     const leaseId = args.leaseId?.toString() ?? '0'
-    const lease = byId.get(leaseId)
     const type = (log.eventName ?? 'LeaseCreated') as ActivityType
     const timestamp = log.blockNumber !== null ? times.get(log.blockNumber.toString()) : undefined
     return {
       id: `${log.transactionHash}-${log.logIndex}`,
       type,
       leaseId,
-      agent: activityAgent(type, args, lease?.delegate),
+      agent: activityAgent(type, args, delegateById.get(leaseId)),
       recipient: args.recipient,
       amount: args.amount,
       timestamp,
