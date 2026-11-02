@@ -91,8 +91,8 @@ function isRangeLimitError(error: unknown): boolean {
   const detail = parts.join(' ').toLowerCase()
   return (
     /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range/.test(detail)
-    || /(?:^|\\s)413(?:\\s|$)/.test(detail)
-    || /(?:^|\\s)-32005(?:\\s|$)/.test(detail)
+    || /(?:^|\s)413(?:\s|$)/.test(detail)
+    || /(?:^|\s)-32005(?:\s|$)/.test(detail)
   )
 }
 
