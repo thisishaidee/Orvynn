@@ -13,6 +13,9 @@ import {
   ARC_TESTNET_RPC,
   ARC_TESTNET_USDC,
   canStartTestnetDeployment,
+  parseSavedTestnetDeployment,
+  serializeSavedTestnetDeployment,
+  TESTNET_DEPLOYMENT_STORAGE_KEY,
   type TestnetDeployPhase,
 } from '@/lib/agentpay-testnet-deploy'
 
@@ -21,6 +24,14 @@ const ABI = artifact.abi as never[]
 const BYTECODE = artifact.bytecode as `0x${string}`
 const EXPLORER = 'https://testnet.arcscan.app'
 const PENDING_TX_KEY = 'orvynn.arc-testnet-deployment.pending.v1'
+
+function readVerifiedDeployment() {
+  try {
+    return parseSavedTestnetDeployment(window.localStorage.getItem(TESTNET_DEPLOYMENT_STORAGE_KEY))
+  } catch {
+    return undefined
+  }
+}
 
 function readPendingHash(): `0x${string}` | undefined {
   try {
@@ -35,15 +46,16 @@ export function TestnetDeployPage() {
   const { address, isConnected, chainId } = useAccount()
   const { data: walletClient } = useConnectorClient()
   const { switchChain } = useSwitchChain()
+  const [initialSaved] = useState(readVerifiedDeployment)
   const [initialHash] = useState(readPendingHash)
-  const [phase, setPhase] = useState<TestnetDeployPhase>(() => initialHash ? 'pending' : 'review')
+  const [phase, setPhase] = useState<TestnetDeployPhase>(() => initialSaved ? 'deployed' : initialHash ? 'pending' : 'review')
   const [checking, setChecking] = useState(false)
   const [usdcVerified, setUsdcVerified] = useState(false)
   const [usdcDetail, setUsdcDetail] = useState('Not checked')
   const [gasEstimate, setGasEstimate] = useState<bigint>()
   const [gasPrice, setGasPrice] = useState<bigint>()
-  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(initialHash)
-  const [contractAddress, setContractAddress] = useState<`0x${string}`>()
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(initialSaved?.txHash ?? initialHash)
+  const [contractAddress, setContractAddress] = useState<`0x${string}` | undefined>(initialSaved?.contractAddress)
   const [problem, setProblem] = useState<string>()
   const bytecodeHash = useMemo(() => keccak256(BYTECODE), [])
   const onTestnet = chainId === ARC_TESTNET_CHAIN_ID
@@ -110,7 +122,17 @@ export function TestnetDeployPage() {
     if (nextLeaseId !== 1n) throw new Error('The deployed contract has an unexpected initial lease ID.')
     setContractAddress(receipt.contractAddress)
     setPhase('deployed')
-    try { window.localStorage.removeItem(PENDING_TX_KEY) } catch { /* storage may be unavailable */ }
+    try {
+      window.localStorage.setItem(TESTNET_DEPLOYMENT_STORAGE_KEY, serializeSavedTestnetDeployment({
+        v: 1,
+        chainId: ARC_TESTNET_CHAIN_ID,
+        txHash: hash,
+        contractAddress: receipt.contractAddress,
+        deployer: tx.from,
+        savedAt: Date.now(),
+      }))
+      window.localStorage.removeItem(PENDING_TX_KEY)
+    } catch { /* keep the verified result visible in memory if storage is unavailable */ }
     return receipt.contractAddress
   }, [])
 
