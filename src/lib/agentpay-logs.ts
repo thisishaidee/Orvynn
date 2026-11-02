@@ -8,7 +8,7 @@
 import type { Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 100_000n
+const INITIAL_CHUNK = 10_000n
 const MIN_CHUNK = 1n
 const MAX_RANGES = 10_000
 const CONCURRENCY = 4
