@@ -59,6 +59,7 @@ export function ActivityPage() {
         <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : undefined} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
       </div>
       <NotConnectedNotice subject="Activity" />
+      {source.state === 'error' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-support" role="alert"><span>{source.reason}</span><button className="font-medium underline" onClick={source.refetch}>Retry activity</button></div>}
 
       <Card padding="none" className="overflow-hidden">
         <div className="border-b border-line bg-gradient-to-r from-brand-mist/70 to-transparent p-4 sm:p-5 lg:p-6">
