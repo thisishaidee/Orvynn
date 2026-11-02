@@ -299,21 +299,24 @@ async function discoverActivity(
   const byId = new Map(leases.map((lease) => [lease.id, lease]))
   if (leaseIds.length === 0) return []
 
-  // All six event types index leaseId. Fetch them together and limit the RPC
-  // response to this owner's leases instead of making six sequential scans.
-  const logs = await getLogsChunked(client, {
-    address: contract,
-    events: [
-      eventAbi('LeaseCreated'),
-      eventAbi('Deposited'),
-      eventAbi('Spent'),
-      eventAbi('Revoked'),
-      eventAbi('Withdrawn'),
-      eventAbi('AllowlistUpdated'),
-    ],
-    args: { leaseId: leaseIds },
-    fromBlock,
-  })
+  // Query each event type with its own indexed leaseId filter. viem does not
+  // allow combining multiple event signatures and indexed args in one getLogs
+  // call, so run the six filtered scans concurrently against one block snapshot.
+  const snapshot = await client.getBlockNumber()
+  const [created, deposited, withdrawn, spent, revoked, allowlist] = await Promise.all([
+    getLogsChunked(client, { address: contract, event: eventAbi('LeaseCreated') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Deposited') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Withdrawn') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Spent') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Revoked') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+    getLogsChunked(client, { address: contract, event: eventAbi('AllowlistUpdated') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
+  ])
+  const logs = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist]
+    .sort((a, b) => {
+      const blockOrder = (a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)
+      if (blockOrder !== 0n) return blockOrder < 0n ? -1 : 1
+      return (a.logIndex ?? 0) - (b.logIndex ?? 0)
+    })
 
   const times = await blockTimestamps(
     client,
