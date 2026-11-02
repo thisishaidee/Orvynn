@@ -97,7 +97,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
   }
 }
 
-async function discoverLeases(client: PublicClient, contract: Address, filter: { owner?: Address; delegate?: Address }, fromBlock: bigint): Promise<Lease[]> {
+async function discoverLeases(client: PublicClient, contract: Address, filter: { owner?: Address; delegate?: Address }, fromBlock: bigint, toBlock: bigint): Promise<Lease[]> {
   const created = await getLogsChunked(client, {
     address: contract,
     event: {
@@ -107,6 +107,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
     } as never,
     args: filter,
     fromBlock,
+    toBlock,
   })
 
   const ids = [...new Set(created.map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId).filter((id): id is bigint => id !== undefined))]
@@ -121,6 +122,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
     } as never,
     args: { leaseId: ids },
     fromBlock,
+    toBlock,
   })
 
   const allowedByLease = new Map<string, Map<string, boolean>>()
@@ -136,7 +138,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
   // Use the chain's latest block timestamp so the window-index calculation
   // matches the contract's remainingAllowance (which uses block.timestamp).
   // Client wall-clock time can be ahead or behind and would report the wrong period.
-  const latest = await client.getBlock({ blockTag: 'latest' })
+  const latest = await client.getBlock({ blockNumber: toBlock })
   const nowSeconds = latest.timestamp
   const blockNumber = latest.number
   if (blockNumber === null) {
@@ -166,9 +168,13 @@ export function useDelegateLeases(): DataSource<Lease> {
   const query = useQuery({
     queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
-    queryFn: () => {
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    retry: 1,
+    queryFn: async () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId))
+      const snapshot = await gate.client.getBlockNumber()
+      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId), snapshot)
     },
   })
 
