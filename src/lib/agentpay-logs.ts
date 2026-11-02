@@ -224,7 +224,7 @@ export async function getActivityLogsChunked(
             eventName: result.eventName,
             blockNumber: raw.blockNumber ? BigInt(raw.blockNumber) : null,
             transactionHash: raw.transactionHash ?? null,
-            logIndex: raw.logIndex ? Number(BigInt(raw.logIndex)) : raw.logIndex === '0x0' ? 0 : null,
+            logIndex: raw.logIndex != null ? Number(BigInt(raw.logIndex)) : null,
           }
         })
       },
