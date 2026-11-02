@@ -69,7 +69,7 @@ describe('event pagination completeness', () => {
       event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow(/Incomplete event history/)
-    expect(calls).toBe(10_000)
+    expect(calls).toBe(0)
   })
 })
 
@@ -87,5 +87,36 @@ describe('allowlist read failure', () => {
       event: { type: 'event', name: 'AllowlistUpdated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow('allowlist rpc failed')
+  })
+})
+
+describe('bounded multi-event log reads', () => {
+  test('uses one event query and respects a pinned snapshot', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const client = {
+      getLogs: async (params: Record<string, unknown>) => {
+        calls.push(params)
+        return []
+      },
+    } as unknown as PublicClient
+
+    const events = [
+      { type: 'event', name: 'Deposited', inputs: [] },
+      { type: 'event', name: 'Spent', inputs: [] },
+    ] as never
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      events,
+      args: { leaseId: [1n, 2n] },
+      fromBlock: 10n,
+      toBlock: 20n,
+    })).resolves.toEqual([])
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].fromBlock).toBe(10n)
+    expect(calls[0].toBlock).toBe(20n)
+    expect(calls[0].events).toEqual(events)
+    expect(calls[0].args).toEqual({ leaseId: [1n, 2n] })
   })
 })
