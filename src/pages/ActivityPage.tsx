@@ -53,10 +53,10 @@ export function ActivityPage() {
         description="A record of everything that happened on your leases: payments, deposits, withdrawals and revocations."
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Events loaded" value={source.state === 'ready' ? source.items.length : undefined} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
-        <StatCard label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : undefined} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
-        <StatCard label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : undefined} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
-        <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : undefined} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
+        <StatCard label="Events loaded" value={source.state === 'ready' ? source.items.length : undefined} loading={source.state === 'loading'} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
+        <StatCard label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : undefined} loading={source.state === 'loading'} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
+        <StatCard label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : undefined} loading={source.state === 'loading'} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
+        <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : undefined} loading={source.state === 'loading'} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
       </div>
       <NotConnectedNotice subject="Activity" />
 
