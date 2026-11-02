@@ -182,23 +182,20 @@ function useCreatedLeaseLogs(filter: { owner?: Address; delegate?: Address }) {
 /** Leases where the connected wallet is the named delegate, for agent-side spending. */
 export function useDelegateLeases(): DataSource<Lease> {
   const gate = useReadGate()
-  const created = useCreatedLeaseLogs(gate.ok ? { delegate: gate.address } : {})
   const query = useQuery({
-    queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', created.dataUpdatedAt],
-    enabled: gate.ok && created.isSuccess,
+    queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    enabled: gate.ok,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: async () => {
       if (!gate.ok) return []
-      const snapshot = await gate.client.getBlockNumber()
-      return discoverLeases(gate.client, gate.contract, created.data ?? [], eventStartBlock(gate.chainId), snapshot)
+      return discoverWalletLeases(gate.client, gate.contract, gate.address, 'delegate')
     },
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The delegate lease history read failed.', refetch: () => void created.refetch() }
-  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void created.refetch() }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
   if (query.isError) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
   return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
 }
@@ -248,27 +245,74 @@ export function useAllowedRecipient(id: bigint | undefined, recipient: Address |
 
 export function useOwnerLeases(): DataSource<Lease> {
   const gate = useReadGate()
-  const created = useCreatedLeaseLogs(gate.ok ? { owner: gate.address } : {})
   const query = useQuery({
-    queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', created.dataUpdatedAt],
-    enabled: gate.ok && created.isSuccess,
+    queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    enabled: gate.ok,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: async () => {
       if (!gate.ok) return []
-      const snapshot = await gate.client.getBlockNumber()
-      return discoverLeases(gate.client, gate.contract, created.data ?? [], eventStartBlock(gate.chainId), snapshot)
+      return discoverWalletLeases(gate.client, gate.contract, gate.address, 'owner')
     },
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The lease history read failed.', refetch: () => void created.refetch() }
-  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void created.refetch() }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
   if (query.isError) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
   }
   return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
+}
+
+
+/**
+ * Discover wallet leases from the contract's sequential ID counter.
+ * This avoids requiring a historical LeaseCreated scan just to render leases.
+ */
+async function discoverWalletLeases(
+  client: PublicClient, contract: Address, wallet: Address, role: 'owner' | 'delegate',
+): Promise<Lease[]> {
+  const snapshot = await client.getBlockNumber()
+  const latest = await client.getBlock({ blockNumber: snapshot })
+  const nextId = await client.readContract({
+    address: contract, abi: agentPayAbi, functionName: 'nextLeaseId', blockNumber: snapshot,
+  }) as bigint
+  const ids = Array.from({ length: Number(nextId > 1_000_001n ? 0n : nextId - 1n) }, (_, i) => BigInt(i + 1))
+  if (nextId > 1_000_001n) throw new Error('Lease count exceeds the safe dashboard read limit.')
+  const matches: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
+  for (let offset = 0; offset < ids.length; offset += 8) {
+    const batch = ids.slice(offset, offset + 8)
+    const rows = await Promise.all(batch.map(async (id) => {
+      const [row, remaining] = await Promise.all([
+        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot }) as Promise<LeaseTuple>,
+        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot }) as Promise<bigint>,
+      ])
+      return { id, row, remaining }
+    }))
+    matches.push(...rows.filter(({ row }) => row[role === 'owner' ? 0 : 1].toLowerCase() === wallet.toLowerCase()))
+  }
+  const ownedIds = matches.map(({ id }) => id)
+  const allowedByLease = new Map<string, Map<string, boolean>>()
+  if (ownedIds.length) {
+    const logs = await getLogsChunked(client, {
+      address: contract, event: eventAbi('AllowlistUpdated') as never,
+      args: { leaseId: ownedIds }, fromBlock: eventStartBlock(Number((await client.getChainId()))), toBlock: snapshot,
+    })
+    for (const log of logs) {
+      const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+      if (args.leaseId === undefined || !args.recipient) continue
+      const key = args.leaseId.toString()
+      const entries = allowedByLease.get(key) ?? new Map<string, boolean>()
+      entries.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+      allowedByLease.set(key, entries)
+    }
+  }
+  return matches.map(({ id, row, remaining }) => {
+    const permissions = allowedByLease.get(id.toString())
+    const allowed = permissions ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address) : []
+    return toLease(id, row, remaining, allowed, latest.timestamp)
+  }).sort((a, b) => Number(b.id) - Number(a.id))
 }
 
 function eventAbi(name: string) {
