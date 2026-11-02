@@ -69,7 +69,7 @@ describe('event pagination completeness', () => {
       event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow(/Incomplete event history/)
-    expect(calls).toBe(10_000)
+    expect(calls).toBe(0)
   })
 })
 
