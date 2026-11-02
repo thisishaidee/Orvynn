@@ -5,7 +5,7 @@
  * split rejected ranges, and return results only when the complete snapshot
  * has been retrieved. A failed sub-range never becomes a partial success.
  */
-import type { Address, PublicClient } from 'viem'
+import type { AbiEvent, Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
 const INITIAL_CHUNK = 10_000n
@@ -15,7 +15,8 @@ const CONCURRENCY = 4
 
 export type LogQuery = {
   address: Address
-  event: (typeof agentPayAbi)[number]
+  event?: (typeof agentPayAbi)[number]
+  events?: readonly AbiEvent[]
   args?: Record<string, unknown>
   fromBlock: bigint
   /** Pin related event queries to one consistent chain snapshot. */
@@ -24,6 +25,7 @@ export type LogQuery = {
 
 export async function getLogsChunked(client: PublicClient, params: LogQuery) {
   const { fromBlock: startBlock, toBlock, ...query } = params
+  if (!query.event && !query.events?.length) throw new Error('An event or event list is required for log retrieval.')
   const latest = toBlock ?? await client.getBlockNumber()
   if (startBlock > latest) return []
 
