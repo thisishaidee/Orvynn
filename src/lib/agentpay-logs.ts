@@ -34,7 +34,7 @@ export async function getLogsChunked(client: PublicClient, params: LogQuery) {
     from = to + 1n
   }
   if (ranges.length > MAX_RANGES) {
-    throw new Error(`Event history requires ${ranges.length} ranges, exceeding the safety limit of ${MAX_RANGES}.`)
+    throw new Error(`Incomplete event history: requires ${ranges.length} ranges, exceeding the safety limit of ${MAX_RANGES}.`)
   }
 
   let completedRanges = 0
