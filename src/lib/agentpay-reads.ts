@@ -48,13 +48,6 @@ export function useReadGate(): ReadGate {
   if (!client) {
     return { ok: false, state: 'disconnected', reason: 'The network client is not ready yet.' }
   }
- n invent one.
-        }
-      }),
-    )
-  }
-  return map
-}
 
 type LeaseTuple = readonly [
   Address, Address, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean,
