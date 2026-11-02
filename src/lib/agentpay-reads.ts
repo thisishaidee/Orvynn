@@ -196,11 +196,11 @@ export function useDelegateLeases(): DataSource<Lease> {
     },
   })
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The delegate lease history read failed.' }
-  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.' }
-  if (query.isError) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.' }
-  return { state: 'ready', items: query.data ?? [], reason: '' }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
+  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The delegate lease history read failed.', refetch: () => void created.refetch() }
+  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void created.refetch() }
+  if (query.isError) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
+  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
 }
 
 export function useNextLeaseId() {
@@ -263,12 +263,12 @@ export function useOwnerLeases(): DataSource<Lease> {
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The lease history read failed.' }
-  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.' }
+  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The lease history read failed.', refetch: () => void created.refetch() }
+  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void created.refetch() }
   if (query.isError) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.' }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
   }
-  return { state: 'ready', items: query.data ?? [], reason: '' }
+  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
 }
 
 function eventAbi(name: string) {
@@ -376,10 +376,10 @@ export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (createdQuery.isError) return { state: 'error', items: [], reason: createdQuery.error instanceof Error ? createdQuery.error.message : 'The lease history read failed.' }
-  if (createdQuery.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Finding your leases and reading their activity.' }
+  if (createdQuery.isError) return { state: 'error', items: [], reason: createdQuery.error instanceof Error ? createdQuery.error.message : 'The lease history read failed.', refetch: () => void createdQuery.refetch() }
+  if (createdQuery.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Finding your leases and reading their activity.', refetch: () => void createdQuery.refetch() }
   if (query.isError) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.' }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.', refetch: () => void query.refetch() }
   }
-  return { state: 'ready', items: query.data ?? [], reason: '' }
+  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
 }
