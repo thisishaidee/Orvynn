@@ -162,7 +162,7 @@ function useCreatedLeaseLogs(filter: { owner?: Address; delegate?: Address }) {
   return useQuery({
     queryKey: ['agentpay', 'created-logs', role, gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', wallet],
     enabled: gate.ok,
-    staleTime: 60_000,
+    staleTime: 15_000,
     gcTime: 10 * 60_000,
     retry: 1,
     queryFn: async () => {
@@ -184,7 +184,7 @@ export function useDelegateLeases(): DataSource<Lease> {
   const gate = useReadGate()
   const created = useCreatedLeaseLogs(gate.ok ? { delegate: gate.address } : {})
   const query = useQuery({
-    queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', created.dataUpdatedAt],
     enabled: gate.ok && created.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
@@ -250,7 +250,7 @@ export function useOwnerLeases(): DataSource<Lease> {
   const gate = useReadGate()
   const created = useCreatedLeaseLogs(gate.ok ? { owner: gate.address } : {})
   const query = useQuery({
-    queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', created.dataUpdatedAt],
     enabled: gate.ok && created.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
@@ -357,7 +357,7 @@ export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   const gate = useReadGate()
   const createdQuery = useCreatedLeaseLogs(gate.ok ? { owner: gate.address } : {})
   const query = useQuery({
-    queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
+    queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', createdQuery.dataUpdatedAt],
     enabled: gate.ok && createdQuery.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
