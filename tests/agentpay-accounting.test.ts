@@ -57,7 +57,7 @@ describe('event pagination completeness', () => {
   test('throws instead of returning partial logs when the chunk limit is hit', async () => {
     let calls = 0
     const client = {
-      getBlockNumber: async () => 100_000_000n,
+      getBlockNumber: async () => 600_000_000n,
       getLogs: async () => {
         calls += 1
         return []
