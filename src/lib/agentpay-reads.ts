@@ -1,7 +1,6 @@
 /**
  * Read-only AgentPay contract access.
- * Discovers leases from LeaseCreated events filtered by owner, then reads
- * current state. Does not invent addresses, records, or timestamps.
+ * Reads lease records from contract state and uses logs only for activity and permissions.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -95,60 +94,6 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
     allowedRecipients: allowed,
     onChainRemaining: remaining,
   }
-}
-
-async function discoverLeases(client: PublicClient, contract: Address, created: Awaited<ReturnType<typeof getLogsChunked>>, fromBlock: bigint, toBlock: bigint): Promise<Lease[]> {
-
-  const ids = [...new Set(created.map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId).filter((id): id is bigint => id !== undefined))]
-  if (ids.length === 0) return []
-
-  const allowlistLogs = await getLogsChunked(client, {
-    address: contract,
-    event: {
-      type: 'event',
-      name: 'AllowlistUpdated',
-      inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'AllowlistUpdated')!.inputs,
-    } as never,
-    args: { leaseId: ids },
-    fromBlock,
-    toBlock,
-  })
-
-  const allowedByLease = new Map<string, Map<string, boolean>>()
-  for (const log of allowlistLogs) {
-    const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-    if (args.leaseId === undefined || !args.recipient) continue
-    const key = args.leaseId.toString()
-    const set = allowedByLease.get(key) ?? new Map<string, boolean>()
-    set.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-    allowedByLease.set(key, set)
-  }
-
-  // Use the chain's latest block timestamp so the window-index calculation
-  // matches the contract's remainingAllowance (which uses block.timestamp).
-  // Client wall-clock time can be ahead or behind and would report the wrong period.
-  const latest = await client.getBlock({ blockNumber: toBlock })
-  const nowSeconds = latest.timestamp
-  const blockNumber = latest.number
-  if (blockNumber === null) {
-    throw new Error('Latest block number is unavailable; cannot read a consistent lease snapshot.')
-  }
-
-  const leases = await Promise.all(
-    ids.map(async (id) => {
-      const [row, remaining] = await Promise.all([
-        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber }) as Promise<LeaseTuple>,
-        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber }) as Promise<bigint>,
-      ])
-      const permissions = allowedByLease.get(id.toString())
-      const allowed = permissions
-        ? [...permissions.entries()].filter(([, on]) => on).map(([addr]) => addr as Address)
-        : []
-      return toLease(id, row, remaining, allowed, nowSeconds)
-    }),
-  )
-
-  return leases.sort((a, b) => Number(b.id) - Number(a.id))
 }
 
 /**
