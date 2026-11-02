@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Check, X, Wallet, Network, SlidersHorizontal, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAccount } from 'wagmi'
+import { arc, arcTestnet } from 'viem/chains'
 import { Badge, Card, CardHeader, PageHeader } from '@/components/ui'
 import { InfoList, InfoRow } from '@/components/agentpay/Notices'
 import { shortAddress } from '@/lib/agentpay'
@@ -43,7 +44,7 @@ export function SettingsPage() {
   const contractAddress = getAgentPayAddress(network.chainId)
   const contractConfigured = network.chainId !== undefined
     ? Boolean(contractAddress)
-    : Boolean(mainnetAddress || testnetAddress)
+    : Boolean(getAgentPayAddress(arc.id) || getAgentPayAddress(arcTestnet.id))
 
   return (
     <div className="space-y-6 md:space-y-8">
