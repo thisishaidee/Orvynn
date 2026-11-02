@@ -12,7 +12,7 @@ import { agentPayAbi } from '@/lib/agentpay-abi'
 import { agentPayAddressEnvVar, getAgentPayAddress } from '@/lib/agentpay-address'
 import type { ActivityItem, ActivityType, DataSource, Lease } from '@/lib/agentpay'
 import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
-import { getLogsChunked } from '@/lib/agentpay-logs'
+import { getActivityLogsChunked, getLogsChunked } from '@/lib/agentpay-logs'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
 // Verified Arc Mainnet deployment block for the live AgentPay contract.
@@ -287,33 +287,18 @@ async function discoverActivity(
   const byId = new Map(leases.map((lease) => [lease.id, lease]))
   if (leaseIds.length === 0) return []
 
-  // Each event type needs its own indexed filter. Keep the scans on one
-  // snapshot, but limit how many historical scans compete for the RPC at once.
-  // This reduces request bursts on mobile or rate-limited providers.
+  // All six events index leaseId as their first indexed field. Query the
+  // event-signature OR list and lease-ID OR list together so one RPC filter
+  // retrieves the complete relevant history for this snapshot.
   const snapshot = await client.getBlockNumber()
   const eventNames = ['LeaseCreated', 'Deposited', 'Withdrawn', 'Spent', 'Revoked', 'AllowlistUpdated'] as const
-  const eventLogs: Awaited<ReturnType<typeof getLogsChunked>>[] = []
-  const scanConcurrency = 2
-  for (let offset = 0; offset < eventNames.length; offset += scanConcurrency) {
-    const batch = eventNames.slice(offset, offset + scanConcurrency)
-    const results = await Promise.all(batch.map((name) =>
-      getLogsChunked(client, {
-        address: contract,
-        event: eventAbi(name) as never,
-        args: { leaseId: leaseIds },
-        fromBlock,
-        toBlock: snapshot,
-      }),
-    ))
-    eventLogs.push(...results)
-  }
-  const [created, deposited, withdrawn, spent, revoked, allowlist] = eventLogs
-  const logs = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist]
-    .sort((a, b) => {
-      const blockOrder = (a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)
-      if (blockOrder !== 0n) return blockOrder < 0n ? -1 : 1
-      return (a.logIndex ?? 0) - (b.logIndex ?? 0)
-    })
+  const logs = await getActivityLogsChunked(client, {
+    address: contract,
+    events: eventNames.map((name) => eventAbi(name)),
+    leaseIds,
+    fromBlock,
+    toBlock: snapshot,
+  })
 
   const times = await getBlockTimestamps(
     client,
