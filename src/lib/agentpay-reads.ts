@@ -368,7 +368,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, gate.address, leases, eventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, leases, eventStartBlock(gate.chainId))
     },
   })
 
