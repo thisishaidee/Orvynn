@@ -39,10 +39,12 @@ export async function getLogsChunked(client: PublicClient, params: LogQuery) {
 
   let completedRanges = 0
   const fetchRange = async (from: bigint, to: bigint): Promise<Awaited<ReturnType<typeof client.getLogs>>> => {
+    if (completedRanges >= MAX_RANGES) {
+      throw new Error('Event history exceeded the maximum number of RPC ranges.')
+    }
     try {
       const logs = await client.getLogs({ ...query, fromBlock: from, toBlock: to } as never)
       completedRanges += 1
-      if (completedRanges > MAX_RANGES) throw new Error('Event history exceeded the maximum number of RPC ranges.')
       return logs
     } catch (error) {
       if (to - from + 1n <= MIN_CHUNK) {
@@ -50,10 +52,10 @@ export async function getLogsChunked(client: PublicClient, params: LogQuery) {
         throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
       }
       const midpoint = from + (to - from) / 2n
-      const [left, right] = await Promise.all([
-        fetchRange(from, midpoint),
-        fetchRange(midpoint + 1n, to),
-      ])
+      // Keep fallback splits sequential so a struggling RPC is not flooded
+      // with an unbounded tree of smaller requests.
+      const left = await fetchRange(from, midpoint)
+      const right = await fetchRange(midpoint + 1n, to)
       return [...left, ...right]
     }
   }
