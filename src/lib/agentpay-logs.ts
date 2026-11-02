@@ -1,14 +1,17 @@
 /**
- * Adaptive event-log retrieval starting at the contract's deployment block.
- * Arc's public RPC can reject large eth_getLogs ranges or bursts of requests.
- * Shrink rejected ranges and never return partial history as complete.
+ * Bounded, adaptive event-log retrieval.
+ *
+ * Arc RPC can reject large eth_getLogs ranges. Fetch ranges concurrently,
+ * split rejected ranges, and return results only when the complete snapshot
+ * has been retrieved. A failed sub-range never becomes a partial success.
  */
 import type { Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 9_000n
+const INITIAL_CHUNK = 100_000n
 const MIN_CHUNK = 1n
-const MAX_CHUNKS = 10_000
+const MAX_RANGES = 10_000
+const CONCURRENCY = 4
 
 export type LogQuery = {
   address: Address
@@ -24,31 +27,47 @@ export async function getLogsChunked(client: PublicClient, params: LogQuery) {
   const latest = toBlock ?? await client.getBlockNumber()
   if (startBlock > latest) return []
 
-  const logs: Awaited<ReturnType<typeof client.getLogs>> = []
-  let from = startBlock
-  let chunkSize = INITIAL_CHUNK
-  let chunks = 0
+  const ranges: Array<{ from: bigint; to: bigint }> = []
+  for (let from = startBlock; from <= latest;) {
+    const to = from + INITIAL_CHUNK - 1n > latest ? latest : from + INITIAL_CHUNK - 1n
+    ranges.push({ from, to })
+    from = to + 1n
+  }
+  if (ranges.length > MAX_RANGES) {
+    throw new Error(`Event history requires ${ranges.length} ranges, exceeding the safety limit of ${MAX_RANGES}.`)
+  }
 
-  while (from <= latest && chunks < MAX_CHUNKS) {
-    const to = from + chunkSize - 1n > latest ? latest : from + chunkSize - 1n
+  let completedRanges = 0
+  const fetchRange = async (from: bigint, to: bigint): Promise<Awaited<ReturnType<typeof client.getLogs>>> => {
     try {
-      const batch = await client.getLogs({ ...query, fromBlock: from, toBlock: to } as never)
-      logs.push(...batch)
-      chunks += 1
-      if (to === latest) return logs
-      from = to + 1n
-      // Gradually restore the preferred range after a smaller request succeeds.
-      if (chunkSize < INITIAL_CHUNK) chunkSize = chunkSize * 2n > INITIAL_CHUNK ? INITIAL_CHUNK : chunkSize * 2n
+      const logs = await client.getLogs({ ...query, fromBlock: from, toBlock: to } as never)
+      completedRanges += 1
+      if (completedRanges > MAX_RANGES) throw new Error('Event history exceeded the maximum number of RPC ranges.')
+      return logs
     } catch (error) {
-      if (chunkSize === MIN_CHUNK) {
+      if (to - from + 1n <= MIN_CHUNK) {
         const detail = error instanceof Error ? error.message : String(error)
         throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
       }
-      chunkSize = chunkSize / 2n < MIN_CHUNK ? MIN_CHUNK : chunkSize / 2n
+      const midpoint = from + (to - from) / 2n
+      const [left, right] = await Promise.all([
+        fetchRange(from, midpoint),
+        fetchRange(midpoint + 1n, to),
+      ])
+      return [...left, ...right]
     }
   }
 
-  throw new Error(
-    `Incomplete event history: stopped after ${chunks} ranges before block ${latest}. Results were not treated as complete.`,
-  )
+  const results: Awaited<ReturnType<typeof client.getLogs>>[] = []
+  for (let i = 0; i < ranges.length; i += CONCURRENCY) {
+    const batch = ranges.slice(i, i + CONCURRENCY)
+    const fetched = await Promise.all(batch.map(({ from, to }) => fetchRange(from, to)))
+    results.push(...fetched)
+  }
+
+  return results.flat().sort((a, b) => {
+    const blockOrder = (a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)
+    if (blockOrder !== 0n) return blockOrder < 0n ? -1 : 1
+    return (a.logIndex ?? 0) - (b.logIndex ?? 0)
+  })
 }
