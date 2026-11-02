@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, audit/api-hardening]
   push:
-    branches: [main, studio-sync, feature/payment-integration]
+    branches: [main, studio-sync, feature/payment-integration, audit/dashboard-read-performance]
 
 permissions:
   contents: read
