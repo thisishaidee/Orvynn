@@ -299,18 +299,27 @@ async function discoverActivity(
   const byId = new Map(leases.map((lease) => [lease.id, lease]))
   if (leaseIds.length === 0) return []
 
-  // Query each event type with its own indexed leaseId filter. viem does not
-  // allow combining multiple event signatures and indexed args in one getLogs
-  // call, so run the six filtered scans concurrently against one block snapshot.
+  // Each event type needs its own indexed filter. Keep the scans on one
+  // snapshot, but limit how many historical scans compete for the RPC at once.
+  // This reduces request bursts on mobile or rate-limited providers.
   const snapshot = await client.getBlockNumber()
-  const [created, deposited, withdrawn, spent, revoked, allowlist] = await Promise.all([
-    getLogsChunked(client, { address: contract, event: eventAbi('LeaseCreated') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Deposited') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Withdrawn') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Spent') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-    getLogsChunked(client, { address: contract, event: eventAbi('Revoked') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-    getLogsChunked(client, { address: contract, event: eventAbi('AllowlistUpdated') as never, args: { leaseId: leaseIds }, fromBlock, toBlock: snapshot }),
-  ])
+  const eventNames = ['LeaseCreated', 'Deposited', 'Withdrawn', 'Spent', 'Revoked', 'AllowlistUpdated'] as const
+  const eventLogs: Awaited<ReturnType<typeof getLogsChunked>>[] = []
+  const scanConcurrency = 2
+  for (let offset = 0; offset < eventNames.length; offset += scanConcurrency) {
+    const batch = eventNames.slice(offset, offset + scanConcurrency)
+    const results = await Promise.all(batch.map((name) =>
+      getLogsChunked(client, {
+        address: contract,
+        event: eventAbi(name) as never,
+        args: { leaseId: leaseIds },
+        fromBlock,
+        toBlock: snapshot,
+      }),
+    ))
+    eventLogs.push(...results)
+  }
+  const [created, deposited, withdrawn, spent, revoked, allowlist] = eventLogs
   const logs = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist]
     .sort((a, b) => {
       const blockOrder = (a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)
