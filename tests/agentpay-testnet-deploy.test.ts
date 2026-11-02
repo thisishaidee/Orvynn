@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { ARC_TESTNET_CHAIN_ID, canStartTestnetDeployment } from '../src/lib/agentpay-testnet-deploy'
+import {
+  ARC_TESTNET_CHAIN_ID,
+  canStartTestnetDeployment,
+  parseSavedTestnetDeployment,
+  serializeSavedTestnetDeployment,
+  type SavedTestnetDeployment,
+} from '../src/lib/agentpay-testnet-deploy'
 
 const base = {
   phase: 'review' as const,
@@ -28,5 +34,28 @@ describe('Arc Testnet deployment gate', () => {
     expect(canStartTestnetDeployment({ ...base, phase: 'signing' })).toBe(false)
     expect(canStartTestnetDeployment({ ...base, phase: 'pending' })).toBe(false)
     expect(canStartTestnetDeployment({ ...base, phase: 'deployed' })).toBe(false)
+  })
+})
+
+describe('verified Arc Testnet deployment persistence', () => {
+  const saved: SavedTestnetDeployment = {
+    v: 1,
+    chainId: ARC_TESTNET_CHAIN_ID,
+    txHash: `0x${'a'.repeat(64)}`,
+    contractAddress: '0x1111111111111111111111111111111111111111',
+    deployer: '0x2222222222222222222222222222222222222222',
+    savedAt: 1794000000000,
+  }
+
+  test('round-trips only the public verified deployment receipt', () => {
+    expect(parseSavedTestnetDeployment(serializeSavedTestnetDeployment(saved))).toEqual(saved)
+  })
+
+  test('rejects malformed, wrong-chain, and incomplete deployment records', () => {
+    expect(parseSavedTestnetDeployment('{broken')).toBeUndefined()
+    expect(parseSavedTestnetDeployment(JSON.stringify({ ...saved, chainId: 5042 }))).toBeUndefined()
+    expect(parseSavedTestnetDeployment(JSON.stringify({ ...saved, txHash: '0x1234' }))).toBeUndefined()
+    expect(parseSavedTestnetDeployment(JSON.stringify({ ...saved, contractAddress: 'bad' }))).toBeUndefined()
+    expect(parseSavedTestnetDeployment(JSON.stringify({ ...saved, deployer: 'bad' }))).toBeUndefined()
   })
 })
