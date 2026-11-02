@@ -119,7 +119,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
       name: 'AllowlistUpdated',
       inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'AllowlistUpdated')!.inputs,
     } as never,
-    args: { leaseId: ids.length === 1 ? ids[0] : undefined },
+    args: { leaseId: ids },
     fromBlock,
   })
 
@@ -348,6 +348,9 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
   const query = useQuery({
     queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', leases.map((l) => l.id).join(',')],
     enabled: gate.ok && leasesReady,
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
       return discoverActivity(gate.client, gate.contract, gate.address, leases, eventStartBlock(gate.chainId))
