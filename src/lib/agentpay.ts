@@ -81,6 +81,8 @@ export interface DataSource<T> {
   items: T[]
   /** Plain-language explanation shown when `state` is not `ready`. */
   reason: string
+  /** Retry the read after a temporary RPC or network failure. */
+  refetch?: () => void
 }
 
 export { useOwnerLeases as useLeases, useOwnerActivityQuery as useActivity, useDelegateLeases } from '@/lib/agentpay-reads'
