@@ -226,9 +226,13 @@ export function useOwnerLeases(): DataSource<Lease> {
   const query = useQuery({
     queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
-    queryFn: () => {
+    staleTime: 15_000,
+    gcTime: 5 * 60_000,
+    retry: 1,
+    queryFn: async () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, eventStartBlock(gate.chainId))
+      const snapshot = await gate.client.getBlockNumber()
+      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, eventStartBlock(gate.chainId), snapshot)
     },
   })
 
@@ -247,45 +251,21 @@ function eventAbi(name: string) {
 }
 
 async function discoverActivity(
-  client: PublicClient,
-  contract: Address,
-  owner: Address,
-  leaseIds: bigint[],
-  fromBlock: bigint,
+  client: PublicClient, contract: Address, owner: Address, leaseIds: bigint[],
+  fromBlock: bigint, toBlock: bigint, created: Awaited<ReturnType<typeof getLogsChunked>>,
 ): Promise<ActivityItem[]> {
   const byId = new Map<string, Lease>()
-
   if (leaseIds.length === 0) return []
-
-  // Every event exposes leaseId as an indexed field. Filter at the RPC instead
-  // of downloading every event emitted by the contract and discarding most of
-  // them in the browser. Viem encodes an array as an OR filter over topic values.
-  // Keep scans sequential to avoid bursts against Arc's public RPC.
+  // Reuse LeaseCreated logs from lease discovery; do not scan that history twice.
   const leaseIdFilter = { leaseId: leaseIds }
-  const created = await getLogsChunked(client, {
-    address: contract, event: eventAbi('LeaseCreated') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const deposited = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Deposited') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const withdrawn = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Withdrawn') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const spent = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Spent') as never,
-    args: leaseIdFilter, fromBlock,
-  })
-  const revoked = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Revoked') as never,
-    args: leaseIdFilter, fromBlock,
-  })
-  const allowlist = await getLogsChunked(client, {
-    address: contract, event: eventAbi('AllowlistUpdated') as never,
-    args: leaseIdFilter, fromBlock,
-  })
+  // Independent event scans share one fixed block snapshot and run concurrently.
+  const [deposited, withdrawn, spent, revoked, allowlist] = await Promise.all([
+    getLogsChunked(client, { address: contract, event: eventAbi('Deposited') as never, args: { owner, ...leaseIdFilter }, fromBlock, toBlock }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Withdrawn') as never, args: { owner, ...leaseIdFilter }, fromBlock, toBlock }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Spent') as never, args: leaseIdFilter, fromBlock, toBlock }),
+    getLogsChunked(client, { address: contract, event: eventAbi('Revoked') as never, args: leaseIdFilter, fromBlock, toBlock }),
+    getLogsChunked(client, { address: contract, event: eventAbi('AllowlistUpdated') as never, args: leaseIdFilter, fromBlock, toBlock }),
+  ])
 
   const owned = new Set(leaseIds.map((id) => id.toString()))
   const relevant = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist].filter((log) => {
@@ -356,17 +336,20 @@ export function useOwnerActivityQuery(): DataSource<ActivityItem> {
     retry: 1,
     queryFn: async () => {
       if (!gate.ok) return []
+      const fromBlock = eventStartBlock(gate.chainId)
+      const toBlock = await gate.client.getBlockNumber()
       const created = await getLogsChunked(gate.client, {
         address: gate.contract,
         event: eventAbi('LeaseCreated') as never,
         args: { owner: gate.address },
-        fromBlock: eventStartBlock(gate.chainId),
+        fromBlock,
+        toBlock,
       })
       const ids = [...new Set(created
         .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
         .filter((id): id is bigint => id !== undefined))]
       if (ids.length === 0) return []
-      return discoverActivity(gate.client, gate.contract, gate.address, ids, eventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, gate.address, ids, fromBlock, toBlock, created)
     },
   })
 
