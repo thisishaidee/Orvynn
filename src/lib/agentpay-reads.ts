@@ -119,7 +119,7 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
       name: 'AllowlistUpdated',
       inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'AllowlistUpdated')!.inputs,
     } as never,
-    args: { leaseId: ids.length === 1 ? ids[0] : undefined },
+    args: { leaseId: ids },
     fromBlock,
   })
 
@@ -143,19 +143,33 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
     throw new Error('Latest block number is unavailable; cannot read a consistent lease snapshot.')
   }
 
-  const leases = await Promise.all(
-    ids.map(async (id) => {
-      const [row, remaining] = await Promise.all([
-        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber }) as Promise<LeaseTuple>,
-        client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber }) as Promise<bigint>,
-      ])
+  // Read both lease state values in bounded multicall batches. All calls use
+  // the same block so the displayed balance and allowance are one snapshot.
+  const leases: Lease[] = []
+  const batchSize = 50
+  for (let offset = 0; offset < ids.length; offset += batchSize) {
+    const batchIds = ids.slice(offset, offset + batchSize)
+    const contracts = batchIds.flatMap((id) => [
+      { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
+      { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
+    ])
+    const results = await client.multicall({
+      contracts,
+      blockNumber,
+      allowFailure: false,
+    })
+
+    for (let index = 0; index < batchIds.length; index += 1) {
+      const id = batchIds[index]
+      const row = results[index * 2] as LeaseTuple
+      const remaining = results[index * 2 + 1] as bigint
       const permissions = allowedByLease.get(id.toString())
       const allowed = permissions
         ? [...permissions.entries()].filter(([, on]) => on).map(([addr]) => addr as Address)
         : []
-      return toLease(id, row, remaining, allowed, nowSeconds)
-    }),
-  )
+      leases.push(toLease(id, row, remaining, allowed, nowSeconds))
+    }
+  }
 
   return leases.sort((a, b) => Number(b.id) - Number(a.id))
 }
