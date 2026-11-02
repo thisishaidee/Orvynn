@@ -145,6 +145,7 @@ export function LeasesPage() {
         <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : undefined} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
+      {source.state === 'error' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-support" role="alert"><span>{source.reason}</span><Button size="sm" variant="secondary" onClick={source.refetch}>Retry leases</Button></div>}
       <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setSelectedId(undefined)} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
