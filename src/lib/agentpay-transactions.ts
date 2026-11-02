@@ -186,12 +186,11 @@ export function useAgentPayTransactions() {
   }, [assertReady, walletClient, connectedAddress, waitForSuccess])
 
   const spend = useCallback(async (leaseId: bigint, recipient: Address, amount: bigint): Promise<TransactionResult> => {
-    const { contract, account, chainId } = assertReady()
+    const { contract, account } = assertReady()
     if (!walletClient || !publicClient) throw new Error('The wallet and Arc network clients are unavailable.')
     if (walletClient.account?.address.toLowerCase() !== account.toLowerCase()) {
       throw new Error('The active signer does not match the connected delegate wallet.')
     }
-    if (chainId !== 5042) throw new Error('Agent payment requests are currently supported on Arc Mainnet only.')
     const input = validatePaymentInput({
       leaseId,
       delegate: account,
