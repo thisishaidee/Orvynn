@@ -6,7 +6,7 @@
  * return results only when the complete requested history has been retrieved.
  * A failed sub-range is never silently treated as an empty result.
  */
-import type { AbiEvent, Address, PublicClient } from 'viem'
+import type { Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
 const INITIAL_CHUNK = 10_000n
@@ -16,8 +16,7 @@ const CONCURRENCY = 4
 
 export type LogQuery = {
   address: Address
-  event?: (typeof agentPayAbi)[number]
-  events?: readonly AbiEvent[]
+  event: (typeof agentPayAbi)[number]
   args?: Record<string, unknown>
   fromBlock: bigint
   /** Pin related reads to the same chain snapshot when supplied. */
@@ -26,9 +25,6 @@ export type LogQuery = {
 
 export async function getLogsChunked(client: PublicClient, params: LogQuery) {
   const { fromBlock: startBlock, toBlock, ...query } = params
-  if (!query.event && !query.events?.length) {
-    throw new Error('An event or event list is required for log retrieval.')
-  }
 
   const latest = toBlock ?? await client.getBlockNumber()
   if (startBlock > latest) return []
