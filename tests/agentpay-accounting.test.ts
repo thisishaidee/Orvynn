@@ -208,3 +208,52 @@ describe('bounded event log reads', () => {
     expect(calls[0].args).toEqual({ leaseId: [1n, 2n] })
   })
 })
+
+
+describe('combined AgentPay activity log query', () => {
+  test('uses one topic-filtered RPC query for all six event signatures and decodes the event', async () => {
+    const { agentPayAbi } = await import('../src/lib/agentpay-abi')
+    const { encodeAbiParameters, toEventSelector } = await import('viem')
+    const { getActivityLogsChunked } = await import('../src/lib/agentpay-logs')
+    const events = agentPayAbi.filter((item) => item.type === 'event')
+    const revoked = events.find((event) => event.name === 'Revoked')
+    if (!revoked) throw new Error('Revoked ABI event is missing')
+
+    const leaseId = 7n
+    const idTopic = encodeAbiParameters([{ type: 'uint256' }], [leaseId])
+    const eventTopic = toEventSelector(revoked)
+    const txHash = `0x${'11'.repeat(32)}` as const
+    const requests: Array<Record<string, unknown>> = []
+    const client = {
+      request: async (request: Record<string, unknown>) => {
+        requests.push(request)
+        return [{
+          data: '0x',
+          topics: [eventTopic, idTopic],
+          blockNumber: '0xa',
+          transactionHash: txHash,
+          logIndex: '0x0',
+        }]
+      },
+    } as unknown as PublicClient
+
+    const result = await getActivityLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      events,
+      leaseIds: [leaseId],
+      fromBlock: 10n,
+      toBlock: 20n,
+    })
+
+    expect(requests).toHaveLength(1)
+    const filter = (requests[0].params as Array<Record<string, unknown>>)[0]
+    const topics = filter.topics as Hex[][]
+    expect(topics[0]).toHaveLength(6)
+    expect(topics[1]).toEqual([idTopic])
+    expect(result).toHaveLength(1)
+    expect(result[0].eventName).toBe('Revoked')
+    expect(result[0].args.leaseId).toBe(leaseId)
+    expect(result[0].blockNumber).toBe(10n)
+    expect(result[0].logIndex).toBe(0)
+  })
+})
