@@ -97,18 +97,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
   }
 }
 
-async function discoverLeases(client: PublicClient, contract: Address, filter: { owner?: Address; delegate?: Address }, fromBlock: bigint, toBlock: bigint): Promise<Lease[]> {
-  const created = await getLogsChunked(client, {
-    address: contract,
-    event: {
-      type: 'event',
-      name: 'LeaseCreated',
-      inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'LeaseCreated')!.inputs,
-    } as never,
-    args: filter,
-    fromBlock,
-    toBlock,
-  })
+async function discoverLeases(client: PublicClient, contract: Address, created: Awaited<ReturnType<typeof getLogsChunked>>, fromBlock: bigint, toBlock: bigint): Promise<Lease[]> {
 
   const ids = [...new Set(created.map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId).filter((id): id is bigint => id !== undefined))]
   if (ids.length === 0) return []
@@ -162,24 +151,54 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
   return leases.sort((a, b) => Number(b.id) - Number(a.id))
 }
 
+/**
+ * Shared LeaseCreated query. Owner leases and owner activity consume the same
+ * TanStack Query result, avoiding two full historical scans for one wallet.
+ */
+function useCreatedLeaseLogs(filter: { owner?: Address; delegate?: Address }) {
+  const gate = useReadGate()
+  const role = filter.owner ? 'owner' : 'delegate'
+  const wallet = filter.owner ?? filter.delegate ?? 'none'
+  return useQuery({
+    queryKey: ['agentpay', 'created-logs', role, gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', wallet],
+    enabled: gate.ok,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      if (!gate.ok) return []
+      const toBlock = await gate.client.getBlockNumber()
+      return getLogsChunked(gate.client, {
+        address: gate.contract,
+        event: eventAbi('LeaseCreated') as never,
+        args: filter,
+        fromBlock: eventStartBlock(gate.chainId),
+        toBlock,
+      })
+    },
+  })
+}
+
 /** Leases where the connected wallet is the named delegate, for agent-side spending. */
 export function useDelegateLeases(): DataSource<Lease> {
   const gate = useReadGate()
+  const created = useCreatedLeaseLogs(gate.ok ? { delegate: gate.address } : {})
   const query = useQuery({
     queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
-    enabled: gate.ok,
+    enabled: gate.ok && created.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: async () => {
       if (!gate.ok) return []
       const snapshot = await gate.client.getBlockNumber()
-      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId), snapshot)
+      return discoverLeases(gate.client, gate.contract, created.data ?? [], eventStartBlock(gate.chainId), snapshot)
     },
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.' }
+  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The delegate lease history read failed.' }
+  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.' }
   if (query.isError) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.' }
   return { state: 'ready', items: query.data ?? [], reason: '' }
 }
@@ -229,21 +248,23 @@ export function useAllowedRecipient(id: bigint | undefined, recipient: Address |
 
 export function useOwnerLeases(): DataSource<Lease> {
   const gate = useReadGate()
+  const created = useCreatedLeaseLogs(gate.ok ? { owner: gate.address } : {})
   const query = useQuery({
     queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
-    enabled: gate.ok,
+    enabled: gate.ok && created.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: async () => {
       if (!gate.ok) return []
       const snapshot = await gate.client.getBlockNumber()
-      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, eventStartBlock(gate.chainId), snapshot)
+      return discoverLeases(gate.client, gate.contract, created.data ?? [], eventStartBlock(gate.chainId), snapshot)
     },
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.' }
+  if (created.isError) return { state: 'error', items: [], reason: created.error instanceof Error ? created.error.message : 'The lease history read failed.' }
+  if (created.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.' }
   if (query.isError) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.' }
   }
@@ -334,9 +355,10 @@ async function discoverActivity(
  */
 export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   const gate = useReadGate()
+  const createdQuery = useCreatedLeaseLogs(gate.ok ? { owner: gate.address } : {})
   const query = useQuery({
     queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
-    enabled: gate.ok,
+    enabled: gate.ok && createdQuery.isSuccess,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
@@ -344,13 +366,7 @@ export function useOwnerActivityQuery(): DataSource<ActivityItem> {
       if (!gate.ok) return []
       const fromBlock = eventStartBlock(gate.chainId)
       const toBlock = await gate.client.getBlockNumber()
-      const created = await getLogsChunked(gate.client, {
-        address: gate.contract,
-        event: eventAbi('LeaseCreated') as never,
-        args: { owner: gate.address },
-        fromBlock,
-        toBlock,
-      })
+      const created = createdQuery.data ?? []
       const ids = [...new Set(created
         .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
         .filter((id): id is bigint => id !== undefined))]
@@ -360,7 +376,8 @@ export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   })
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Finding your leases and reading their activity.' }
+  if (createdQuery.isError) return { state: 'error', items: [], reason: createdQuery.error instanceof Error ? createdQuery.error.message : 'The lease history read failed.' }
+  if (createdQuery.isPending || query.isPending) return { state: 'loading', items: [], reason: 'Finding your leases and reading their activity.' }
   if (query.isError) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.' }
   }
