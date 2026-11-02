@@ -7,7 +7,6 @@ import { useNetworkInfo } from '@/lib/wallet'
 import { getAgentPayAddress } from '@/lib/agentpay-address'
 import type { PageId } from '@/lib/route'
 import { useLeases, leaseStatus } from '@/lib/agentpay'
-import { useActivity } from '@/lib/agentpay'
 
 const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: Gauge, title: 'Per-period cap', text: 'An agent can spend up to its limit each period, and the limit resets on its own.' },
@@ -19,7 +18,6 @@ const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
 export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => void }) {
   const { isConnected } = useAccount()
   const leases = useLeases()
-  const activity = useActivity()
   const activeLeaseCount = leases.state === 'ready' ? leases.items.filter((lease) => leaseStatus(lease) === 'active').length : undefined
   const network = useNetworkInfo()
   const contractAddress = getAgentPayAddress(network.chainId)
@@ -27,7 +25,7 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <PageHeader eyebrow={BRAND.name} title="Overview" description={BRAND.tagline} />
+      <PageHeader eyebrow={BRAND.name} title="Overview" description={BRAND.tagline} actions={<Button size="sm" variant="secondary" onClick={() => onNavigate("activity")}>View activity</Button>} />
 
       <Card tone="featured" padding="lg">
         <p className="text-overline uppercase text-brand-pale">Spending control for AI agents</p>
@@ -37,10 +35,9 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
         </p>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} hint="Permissions created from this wallet" />
         <StatCard label="Active leases" value={activeLeaseCount} hint="Currently within their rules" />
-        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} hint="Events read from the contract" />
       </div>
 
       <ul className="grid gap-4 md:grid-cols-3">

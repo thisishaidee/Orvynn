@@ -6,13 +6,13 @@
 import type { Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 9_000n
+const INITIAL_CHUNK = 50_000n
 const MIN_CHUNK = 1n
 const MAX_CHUNKS = 10_000
 
 export type LogQuery = {
   address: Address
-  event: (typeof agentPayAbi)[number]
+  event?: (typeof agentPayAbi)[number]
   args?: Record<string, unknown>
   fromBlock: bigint
 }

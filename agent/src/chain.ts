@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { createPublicClient, defineChain, http, getAddress } from "viem";
+import { createPublicClient, defineChain, fallback, http, getAddress } from "viem";
 
 const rpcUrl = process.env.ARC_RPC_URL ?? "https://rpc.mainnet.arc.io";
 const configuredChainId = Number(process.env.CHAIN_ID ?? "5042");
@@ -28,5 +28,10 @@ export const usdcAddress = getAddress(
 
 export const publicClient = createPublicClient({
   chain: arcMainnet,
-  transport: http(rpcUrl)
+  // Keep the configured Arc RPC as primary and fall back to the independent ArcScan
+  // endpoint when the primary throttles or becomes unavailable.
+  transport: fallback([
+    http(rpcUrl),
+    http(process.env.ARC_RPC_FALLBACK_URL ?? "https://rpc.arc-scan.org")
+  ])
 });

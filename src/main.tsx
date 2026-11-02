@@ -12,7 +12,19 @@ import { config } from './config'
 import App from './App'
 import './index.css'
 
-const queryClient = new QueryClient()
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Reuse recent chain reads when moving between pages instead of rescanning
+      // the same history on every mount. Mutations explicitly invalidate affected data.
+      staleTime: 30_000,
+      gcTime: 10 * 60_000,
+      retry: 1,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: true,
+    },
+  },
+})
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
