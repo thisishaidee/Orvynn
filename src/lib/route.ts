@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { BRAND } from '@/lib/brand'
 
 /** User-facing application pages, in navigation order. */
-export const PAGES = ['overview', 'agents', 'leases', 'activity', 'wallet', 'settings', 'deploy'] as const
+export const PAGES = ['overview', 'agents', 'leases', 'activity', 'wallet', 'settings', 'deploy', 'deploy-testnet'] as const
 /** The public landing page is the root route; design remains an internal URL-only page. */
 export type PageId = (typeof PAGES)[number] | 'design' | 'landing'
 
@@ -15,6 +15,7 @@ const TITLES: Record<PageId, string> = {
   wallet: 'Wallet',
   settings: 'Settings',
   deploy: 'Deploy',
+  'deploy-testnet': 'Testnet deployment',
   design: 'Design system',
 }
 
