@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { ArrowRight, Bot, ShieldCheck, WalletCards, Activity } from 'lucide-react'
-import { Badge, Button, Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
+import { Badge, Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
 import { SourceEmpty } from '@/components/agentpay/SourceEmpty'
 import { DelegateSpendPanel } from '@/components/agentpay/DelegateSpendPanel'
@@ -67,7 +67,6 @@ export function AgentsPage() {
         <StatCard label="Leases assigned" value={source.state === 'ready' ? source.items.length : undefined} icon={<WalletCards className="size-4" />} hint="Across all delegate wallets" />
       </div>
       <NotConnectedNotice subject="Agents" />
-      {source.state === 'error' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-support" role="alert"><span>{source.reason}</span><Button size="sm" variant="secondary" onClick={source.refetch}>Retry agents</Button></div>}
 
       <DelegateSpendPanel />
 
@@ -106,6 +105,7 @@ export function AgentsPage() {
           getRowId={(a) => a.address}
           loading={source.state === 'loading'}
           error={source.state === 'error' ? source.reason : undefined}
+          onRetry={source.refetch}
           empty={
             <SourceEmpty
               state={source.state}
