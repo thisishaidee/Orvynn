@@ -13,6 +13,7 @@ import { agentPayAddressEnvVar, getAgentPayAddress } from '@/lib/agentpay-addres
 import type { ActivityItem, ActivityType, DataSource, Lease } from '@/lib/agentpay'
 import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
 import { getLogsChunked } from '@/lib/agentpay-logs'
+import { getBlockTimestamps } from '@/lib/block-timestamps'
 
 // Verified Arc Mainnet deployment block for the live AgentPay contract.
 // Testnet deployments, if configured later, must supply their own start block.
@@ -47,22 +48,7 @@ export function useReadGate(): ReadGate {
   if (!client) {
     return { ok: false, state: 'disconnected', reason: 'The network client is not ready yet.' }
   }
-  return { ok: true, address, chainId, contract, client }
-}
-
-async function blockTimestamps(client: PublicClient, blocks: bigint[]): Promise<Map<string, number>> {
-  const unique = [...new Set(blocks.map((b) => b.toString()))]
-  const map = new Map<string, number>()
-  const concurrency = 6
-  for (let i = 0; i < unique.length; i += concurrency) {
-    const slice = unique.slice(i, i + concurrency)
-    await Promise.all(
-      slice.map(async (bn) => {
-        try {
-          const block = await client.getBlock({ blockNumber: BigInt(bn) })
-          map.set(bn, Number(block.timestamp))
-        } catch {
-          // Timestamp unavailable for this block. Leave it out rather than invent one.
+ n invent one.
         }
       }),
     )
@@ -334,7 +320,7 @@ async function discoverActivity(
       return (a.logIndex ?? 0) - (b.logIndex ?? 0)
     })
 
-  const times = await blockTimestamps(
+  const times = await getBlockTimestamps(
     client,
     logs.map((log) => log.blockNumber).filter((number): number is bigint => number !== null),
   )
