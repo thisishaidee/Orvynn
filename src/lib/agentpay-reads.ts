@@ -224,7 +224,7 @@ export function useNextLeaseId() {
     address: gate.ok ? gate.contract : undefined,
     abi: agentPayAbi,
     functionName: 'nextLeaseId',
-    query: { enabled: gate.ok },
+    query: { enabled: gate.ok, staleTime: 15_000, gcTime: 5 * 60_000, retry: 1 },
   })
 }
 
@@ -235,7 +235,7 @@ export function useLeaseRecord(id: bigint | undefined) {
     abi: agentPayAbi,
     functionName: 'leases',
     args: id !== undefined ? [id] : undefined,
-    query: { enabled: gate.ok && id !== undefined },
+    query: { enabled: gate.ok && id !== undefined, staleTime: 15_000, gcTime: 5 * 60_000, retry: 1 },
   })
 }
 
@@ -257,7 +257,7 @@ export function useAllowedRecipient(id: bigint | undefined, recipient: Address |
     abi: agentPayAbi,
     functionName: 'allowedRecipients',
     args: id !== undefined && recipient ? [id, recipient] : undefined,
-    query: { enabled: gate.ok && id !== undefined && Boolean(recipient) },
+    query: { enabled: gate.ok && id !== undefined && Boolean(recipient), staleTime: 15_000, gcTime: 5 * 60_000, retry: 1 },
   })
 }
 
@@ -385,5 +385,15 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
 export function useOwnerActivityQuery(): DataSource<ActivityItem> {
   const leases = useOwnerLeases()
   const ready = leases.state === 'ready'
-  return useOwnerActivity(leases.items, ready)
+  const activity = useOwnerActivity(leases.items, ready)
+
+  // Activity depends on the owner lease IDs. Retrying this panel must retry
+  // lease discovery first when that prerequisite has not completed.
+  if (leases.state === 'error') {
+    return { state: 'error', items: [], reason: leases.reason, refetch: leases.refetch }
+  }
+  if (leases.state === 'loading') {
+    return { state: 'loading', items: [], reason: 'Finding your leases before loading activity.', refetch: leases.refetch }
+  }
+  return activity
 }
