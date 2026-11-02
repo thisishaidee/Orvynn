@@ -74,7 +74,7 @@ type LeaseTuple = readonly [
   Address, Address, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean,
 ]
 
-function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[], nowSeconds: bigint): Lease {
+function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[] | undefined, nowSeconds: bigint): Lease {
   return {
     id: id.toString(),
     owner: row[0],
@@ -92,7 +92,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
     balance: row[8],
     allowlistEnabled: row[9],
     revoked: row[10],
-    allowedRecipients: allowed,
+    ...(allowed !== undefined ? { allowedRecipients: allowed } : {}),
     onChainRemaining: remaining,
   }
 }
@@ -102,6 +102,7 @@ async function discoverLeases(
   contract: Address,
   filter: { owner?: Address; delegate?: Address },
   fromBlock: bigint,
+  includeAllowlistHistory = true,
 ): Promise<Lease[]> {
   // Use one block for lease events, allowlist history and current contract state.
   const snapshot = await client.getBlockNumber()
@@ -122,13 +123,15 @@ async function discoverLeases(
   if (ids.length === 0) return []
 
   // Fetch only permission changes for leases belonging to this wallet.
-  const allowlistLogs = await getLogsChunked(client, {
-    address: contract,
-    event: eventAbi('AllowlistUpdated') as never,
-    args: { leaseId: ids },
-    fromBlock,
-    toBlock: snapshot,
-  })
+  const allowlistLogs = includeAllowlistHistory
+    ? await getLogsChunked(client, {
+        address: contract,
+        event: eventAbi('AllowlistUpdated') as never,
+        args: { leaseId: ids },
+        fromBlock,
+        toBlock: snapshot,
+      })
+    : []
 
   const allowedByLease = new Map<string, Map<string, boolean>>()
   for (const log of allowlistLogs) {
@@ -174,9 +177,11 @@ async function discoverLeases(
       }))
       for (const { id, row, remaining } of fallbackRows) {
         const permissions = allowedByLease.get(id.toString())
-        const allowed = permissions
-          ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
-          : []
+        const allowed = includeAllowlistHistory
+          ? permissions
+            ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
+            : []
+          : undefined
         leases.push(toLease(id, row, remaining, allowed, latest.timestamp))
       }
       continue
@@ -187,9 +192,11 @@ async function discoverLeases(
       const row = results[index * 2] as LeaseTuple
       const remaining = results[index * 2 + 1] as bigint
       const permissions = allowedByLease.get(id.toString())
-      const allowed = permissions
-        ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
-        : []
+      const allowed = includeAllowlistHistory
+        ? permissions
+          ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
+          : []
+        : undefined
       leases.push(toLease(id, row, remaining, allowed, latest.timestamp))
     }
   }
@@ -208,7 +215,7 @@ export function useDelegateLeases(): DataSource<Lease> {
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId))
+      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId), false)
     },
   })
 
