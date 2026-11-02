@@ -19,6 +19,7 @@ import {
 } from '@/lib/agentpay'
 import { cn } from '@/lib/cn'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { leaseArchiveStorageKey, readArchivedLeaseIds, writeArchivedLeaseIds } from '@/lib/lease-archive'
 
 type Filter = 'all' | LeaseStatus | 'archived'
 const FILTERS: { id: Filter; label: string }[] = [
@@ -29,15 +30,11 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'archived', label: 'Archived' },
 ]
 
-function archiveStorageKey(chainId?: number, address?: string) {
-  return chainId && address ? `orvynn:archived-leases:${chainId}:${address.toLowerCase()}` : null
-}
-
 export function LeasesPage() {
   const source = useLeases()
   const { address, chainId } = useAccount()
-  const storageKey = archiveStorageKey(chainId, address)
-  const [archivedIds, setArchivedIds] = useState<Set<string>>(() => new Set())
+  const storageKey = leaseArchiveStorageKey(chainId, address)
+  const [archiveState, setArchiveState] = useState<{ key: string | null; ids: Set<string> }>({ key: null, ids: new Set() })
   const [filter, setFilter] = useState<Filter>('all')
   const [selectedId, setSelectedId] = useState<string | undefined>()
   const [createOpen, setCreateOpen] = useState(false)
@@ -47,22 +44,27 @@ export function LeasesPage() {
 
   useEffect(() => {
     if (!storageKey) {
-      setArchivedIds(new Set())
+      setArchiveState({ key: null, ids: new Set() })
       return
     }
     try {
-      const stored: unknown = JSON.parse(window.localStorage.getItem(storageKey) ?? '[]')
-      setArchivedIds(new Set(Array.isArray(stored) ? stored.filter((id): id is string => typeof id === 'string') : []))
+      setArchiveState({ key: storageKey, ids: readArchivedLeaseIds(window.localStorage, storageKey) })
     } catch {
-      setArchivedIds(new Set())
+      setArchiveState({ key: storageKey, ids: new Set() })
       toast.error('Could not read archived leases', { description: 'Your on-chain leases are unaffected.' })
     }
   }, [storageKey])
 
+  // Do not briefly show archived leases as active while a wallet/network's
+  // browser-local archive preference is still being restored.
+  const archiveReady = archiveState.key === storageKey
+  const archivedIds = archiveReady ? archiveState.ids : new Set<string>()
   const withStatus = useMemo(() => source.items.map((lease) => ({ lease, status: leaseStatus(lease), archived: archivedIds.has(lease.id) })), [source.items, archivedIds])
-  const rows = withStatus.filter((r) => filter === 'archived' ? r.archived : !r.archived && (filter === 'all' || r.status === filter))
+  const rows = archiveReady
+    ? withStatus.filter((r) => filter === 'archived' ? r.archived : !r.archived && (filter === 'all' || r.status === filter))
+    : []
   const selected = source.items.find((l) => l.id === selectedId)
-  const ready = source.state === 'ready'
+  const ready = source.state === 'ready' && archiveReady
   const count = (f: Filter) => (ready ? String(withStatus.filter((r) => f === 'archived' ? r.archived : !r.archived && (f === 'all' || r.status === f)).length) : '—')
 
   const setArchived = (lease: Lease, archived: boolean) => {
@@ -70,14 +72,20 @@ export function LeasesPage() {
       toast.error('Connect your wallet to manage archived leases.')
       return
     }
-    const next = new Set(archivedIds)
-    if (archived) next.add(lease.id)
-    else next.delete(lease.id)
+    if (!archiveReady) {
+      toast.error('Archive preferences are still loading. Try again in a moment.')
+      return
+    }
     try {
-      window.localStorage.setItem(storageKey, JSON.stringify([...next]))
-      setArchivedIds(next)
-      toast.success(archived ? `Lease ${lease.id} archived` : `Lease ${lease.id} restored`, {
-        description: 'This changes only your dashboard view. The on-chain lease is unchanged.',
+      // Re-read before writing so a wallet/network change or rapid update
+      // cannot overwrite a newer archive set held in browser storage.
+      const next = readArchivedLeaseIds(window.localStorage, storageKey)
+      if (archived) next.add(lease.id)
+      else next.delete(lease.id)
+      writeArchivedLeaseIds(window.localStorage, storageKey, next)
+      setArchiveState({ key: storageKey, ids: next })
+      toast.success(archived ? 'Lease ' + lease.id + ' archived' : 'Lease ' + lease.id + ' restored', {
+        description: 'Saved in this browser for this wallet and network. The on-chain lease is unchanged.',
       })
     } catch {
       toast.error('Could not save this archive change', { description: 'Your on-chain lease is unaffected.' })
@@ -139,10 +147,10 @@ export function LeasesPage() {
         actions={<Button iconLeft={<Plus className="size-4" aria-hidden />} onClick={() => setCreateOpen(true)}>Create lease</Button>}
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total leases" value={ready ? withStatus.length : undefined} loading={source.state === 'loading'} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
-        <StatCard label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : undefined} loading={source.state === 'loading'} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
-        <StatCard label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : undefined} loading={source.state === 'loading'} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
-        <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : undefined} loading={source.state === 'loading'} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
+        <StatCard label="Total leases" value={ready ? withStatus.length : undefined} loading={source.state === 'loading' || !archiveReady} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
+        <StatCard label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : undefined} loading={source.state === 'loading' || !archiveReady} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
+        <StatCard label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : undefined} loading={source.state === 'loading' || !archiveReady} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
+        <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : undefined} loading={source.state === 'loading' || !archiveReady} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
       <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setSelectedId(undefined)} />
@@ -169,7 +177,7 @@ export function LeasesPage() {
 
       <Card padding="none" className="overflow-hidden">
         <div className="flex flex-col gap-4 border-b border-line bg-gradient-to-r from-brand-mist/70 to-transparent p-4 sm:p-5 lg:p-6">
-          <CardHeader title="Your leases" description="Monitor spending limits, expiry dates and agent permissions." className="mb-0" />
+          <CardHeader title="Your leases" description="Monitor spending limits, expiry dates and agent permissions. Archive preferences stay in this browser for this wallet and network." className="mb-0" />
           <div role="tablist" aria-label="Filter leases by status" className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap">
             {FILTERS.map((f) => (
               <button
@@ -194,7 +202,7 @@ export function LeasesPage() {
           columns={columns}
           rows={rows}
           getRowId={(r) => r.lease.id}
-          loading={source.state === 'loading'}
+          loading={source.state === 'loading' || (source.state === 'ready' && !archiveReady)}
           error={source.state === 'error' ? source.reason : undefined}
           onRetry={source.refetch}
           empty={
