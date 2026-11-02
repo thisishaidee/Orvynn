@@ -73,6 +73,54 @@ describe('event pagination completeness', () => {
   })
 })
 
+
+describe('large bounded log ranges', () => {
+  test('uses 50,000-block ranges for fewer RPC round trips', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        return []
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 100_000n,
+    })).resolves.toEqual([])
+
+    expect(ranges).toEqual([
+      [0n, 49_999n],
+      [50_000n, 99_999n],
+      [100_000n, 100_000n],
+    ])
+  })
+
+  test('splits a rejected large range and still returns the complete result', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        if (toBlock - fromBlock + 1n > 25_000n) throw new Error('range too large')
+        return []
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).resolves.toEqual([])
+
+    expect(ranges).toContainEqual([0n, 49_999n])
+    expect(ranges).toContainEqual([0n, 24_999n])
+    expect(ranges).toContainEqual([25_000n, 49_999n])
+  })
+})
+
 describe('allowlist read failure', () => {
   test('does not turn a failed AllowlistUpdated read into an empty list', async () => {
     const client = {
