@@ -1,5 +1,5 @@
 import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon } from 'lucide-react'
-import { Button, Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
+import { Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
 import { SourceEmpty } from '@/components/agentpay/SourceEmpty'
 import {
@@ -59,7 +59,6 @@ export function ActivityPage() {
         <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : undefined} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
       </div>
       <NotConnectedNotice subject="Activity" />
-      {source.state === 'error' && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-support" role="alert"><span>{source.reason}</span><Button size="sm" variant="secondary" onClick={source.refetch}>Retry activity</Button></div>}
 
       <Card padding="none" className="overflow-hidden">
         <div className="border-b border-line bg-gradient-to-r from-brand-mist/70 to-transparent p-4 sm:p-5 lg:p-6">
@@ -72,6 +71,7 @@ export function ActivityPage() {
           getRowId={(a) => a.id}
           loading={source.state === 'loading'}
           error={source.state === 'error' ? source.reason : undefined}
+          onRetry={source.refetch}
           empty={
             <SourceEmpty
               state={source.state}
