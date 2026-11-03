@@ -111,7 +111,7 @@ export function AgentRequestInbox({ onSelect }: Props) {
             <p className="text-caption text-ink-soft">Recipient</p>
             <p className="break-all font-mono text-support">{request.recipient}</p>
           </div>
-          <Button size="sm" block onClick={() => onSelect(request)}>Review this request</Button>
+          <Button size="sm" className="w-full" onClick={() => onSelect(request)}>Review this request</Button>
         </Card>
       ))}
     </section>
