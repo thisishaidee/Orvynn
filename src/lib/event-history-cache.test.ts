@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'bun:test'
+import { describe, it } from 'node:test'
+import assert from 'node:assert/strict'
 import {
   advanceEventHistoryCheckpoint,
   eventHistoryCacheKey,
@@ -25,76 +26,43 @@ const checkpoint: EventHistoryCheckpoint = {
 
 describe('event history cache primitives', () => {
   it('scopes cache keys by chain, contract and wallet, case-insensitively', () => {
-    expect(eventHistoryCacheKey(identity)).toBe(
-      eventHistoryCacheKey({ ...identity, contract: '0xabcdef', wallet: '0x123456' }),
-    )
-    expect(eventHistoryCacheKey(identity)).not.toBe(
-      eventHistoryCacheKey({ ...identity, chainId: 5042002 }),
-    )
+    assert.equal(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, contract: '0xabcdef', wallet: '0x123456' }))
+    assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, chainId: 5042002 }))
   })
 
   it('starts a first scan at deployment block', () => {
-    expect(planEventHistoryScan({
-      deploymentBlock: 100n,
-      snapshotBlock: 200n,
-      identity,
-    })).toEqual({ fromBlock: 100n, toBlock: 200n, mode: 'full' })
+    assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 200n, identity }), { fromBlock: 100n, toBlock: 200n, mode: 'full' })
   })
 
   it('uses an overlap for a valid incremental scan', () => {
-    expect(planEventHistoryScan({
-      deploymentBlock: 100n,
-      snapshotBlock: 1100n,
-      checkpoint,
-      identity,
-      observedCheckpointBlockHash: hashA,
-      overlapBlocks: 12n,
-    })).toEqual({ fromBlock: 989n, toBlock: 1100n, mode: 'incremental' })
+    assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity, observedCheckpointBlockHash: hashA, overlapBlocks: 12n }), { fromBlock: 989n, toBlock: 1100n, mode: 'incremental' })
   })
 
   it('forces a full rebuild when the checkpoint block hash changes', () => {
-    expect(planEventHistoryScan({
-      deploymentBlock: 100n,
-      snapshotBlock: 1100n,
-      checkpoint,
-      identity,
-      observedCheckpointBlockHash: hashB,
-    })).toEqual({ fromBlock: 100n, toBlock: 1100n, mode: 'rebuild' })
+    assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity, observedCheckpointBlockHash: hashB }), { fromBlock: 100n, toBlock: 1100n, mode: 'rebuild' })
   })
 
   it('forces a rebuild when wallet or chain identity changes', () => {
-    expect(planEventHistoryScan({
-      deploymentBlock: 100n,
-      snapshotBlock: 1100n,
-      checkpoint,
-      identity: { ...identity, wallet: '0x999999' },
-      observedCheckpointBlockHash: hashA,
-    }).mode).toBe('rebuild')
+    assert.equal(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity: { ...identity, wallet: '0x999999' }, observedCheckpointBlockHash: hashA }).mode, 'rebuild')
   })
 
   it('deduplicates overlapping logs and sorts by block then log index', () => {
     const first = { blockNumber: 12n, transactionHash: '0xAA', logIndex: 2, label: 'second' }
     const second = { blockNumber: 11n, transactionHash: '0xBB', logIndex: 0, label: 'first' }
     const duplicate = { ...first, transactionHash: '0xaa', label: 'duplicate' }
-    expect(mergeEventHistory([first, second], [duplicate])).toEqual([second, duplicate])
+    assert.deepEqual(mergeEventHistory([first, second], [duplicate]), [second, duplicate])
   })
 
   it('refuses events without a stable log identity', () => {
-    expect(() => mergeEventHistory([{
-      blockNumber: 1n, transactionHash: null, logIndex: 0,
-    }])).toThrow('Cannot cache an event')
+    assert.throws(() => mergeEventHistory([{ blockNumber: 1n, transactionHash: null, logIndex: 0 }]), /Cannot cache an event/)
   })
 
   it('does not advance a checkpoint after an incomplete scan', () => {
-    expect(() => advanceEventHistoryCheckpoint({
-      identity, throughBlock: 1200n, blockHash: hashB, complete: false,
-    })).toThrow('incomplete scan')
+    assert.throws(() => advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: false }), /incomplete scan/)
   })
 
   it('creates a checkpoint only for a complete snapshot', () => {
-    expect(advanceEventHistoryCheckpoint({
-      identity, throughBlock: 1200n, blockHash: hashB, complete: true,
-    })).toEqual({
+    assert.deepEqual(advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true }), {
       version: 1,
       chainId: 5042,
       contract: '0xabcdef',
@@ -105,12 +73,6 @@ describe('event history cache primitives', () => {
   })
 
   it('refuses checkpoint rollback for the same identity', () => {
-    expect(() => advanceEventHistoryCheckpoint({
-      previous: checkpoint,
-      identity,
-      throughBlock: 999n,
-      blockHash: hashB,
-      complete: true,
-    })).toThrow('cannot move backwards')
+    assert.throws(() => advanceEventHistoryCheckpoint({ previous: checkpoint, identity, throughBlock: 999n, blockHash: hashB, complete: true }), /cannot move backwards/)
   })
 })
