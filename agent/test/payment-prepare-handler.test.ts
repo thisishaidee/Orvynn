@@ -72,3 +72,17 @@ test("returns 400 when the request body exceeds 16 KB", async () => {
   assert.equal(response.status, 400);
   assert.match(String((await responseBody(response)).error), /16 KB limit/i);
 });
+
+test("rejects invalid payment addresses before attempting RPC access", async () => {
+  const response = await onRequestPost({
+    request: request(JSON.stringify({
+      leaseId: "1",
+      delegate: "not-an-address",
+      recipient: "0x2222222222222222222222222222222222222222",
+      amountUsdc: "1"
+    }), `Bearer ${token}`),
+    env
+  });
+  assert.equal(response.status, 422);
+  assert.match(String((await responseBody(response)).error), /valid wallet addresses/i);
+});
