@@ -86,7 +86,7 @@ export function isRateLimitError(error: unknown): boolean {
     }
   }
 
-  return /rate limit|too many requests|\\b429\\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
+  return /rate limit|too many requests|\b429\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
 }
 
 function wait(ms: number): Promise<void> {
@@ -95,8 +95,8 @@ function wait(ms: number): Promise<void> {
 
 /**
  * Only split requests when the provider explicitly signals a query/range limit.
- * Rate limits, timeouts and transport failures must fail fast so recursive
- * splitting does not amplify pressure on an already unhealthy RPC endpoint.
+ * Rate limits are retried with backoff at the same range; timeouts and transport
+ * failures fail fast rather than amplifying pressure on the RPC endpoint.
  */
 export function isRangeLimitError(error: unknown): boolean {
   const seen = new Set<unknown>()
