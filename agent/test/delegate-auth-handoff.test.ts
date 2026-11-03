@@ -95,7 +95,8 @@ test("issues a short-lived challenge and returns a message bound to the wallet a
   assert.equal(body.wallet, account.address);
   assert.match(body.message, /Origin: https:\/\/orvynn\.xyz/);
   assert.match(body.message, new RegExp(account.address));
-  assert.equal(body.expiresAt - Math.floor(Date.now() / 1000), 300);
+  const ttl = body.expiresAt - Math.floor(Date.now() / 1000);
+  assert.ok(ttl >= 299 && ttl <= 300, `unexpected challenge TTL: ${ttl}`);
   assert.equal(nonces.size, 1);
 });
 
