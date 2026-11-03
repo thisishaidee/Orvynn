@@ -27,7 +27,7 @@ function sameIdentity(a: EventHistoryIdentity, b: EventHistoryIdentity): boolean
   return a.chainId === b.chainId &&
     a.contract.toLowerCase() === b.contract.toLowerCase() &&
     a.wallet.toLowerCase() === b.wallet.toLowerCase() &&
-    a.scope === b.scope
+    a.scope === b.scope && (a.filterKey ?? '') === (b.filterKey ?? '')
 }
 
 function isCheckpoint(value: unknown): value is EventHistoryCheckpoint {
@@ -37,7 +37,8 @@ function isCheckpoint(value: unknown): value is EventHistoryCheckpoint {
     Number.isSafeInteger(item.chainId) &&
     typeof item.contract === 'string' &&
     typeof item.wallet === 'string' &&
-    (item.scope === 'owner-leases' || item.scope === 'delegate-leases' || item.scope === 'activity') &&
+    (item.filterKey === undefined || typeof item.filterKey === 'string') &&
+    (['owner-lease-created', 'owner-allowlist', 'delegate-lease-created', 'activity'].includes(item.scope ?? '')) &&
     typeof item.throughBlock === 'string' && /^\d+$/.test(item.throughBlock) &&
     typeof item.blockHash === 'string' && /^0x[0-9a-f]{64}$/i.test(item.blockHash)
 }
