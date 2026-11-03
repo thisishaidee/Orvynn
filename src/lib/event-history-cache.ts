@@ -18,7 +18,8 @@ export type EventHistoryCheckpoint = {
   chainId: number
   contract: string
   wallet: string
-  scope: 'owner-leases' | 'delegate-leases' | 'activity'
+  scope: 'owner-lease-created' | 'owner-allowlist' | 'delegate-lease-created' | 'activity'
+  filterKey?: string
   throughBlock: string
   blockHash: string
 }
