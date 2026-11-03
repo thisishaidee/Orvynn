@@ -426,6 +426,8 @@ function eventAbi(name: string) {
 async function discoverActivity(
   client: PublicClient,
   contract: Address,
+  chainId: number,
+  wallet: Address,
   leases: Lease[],
   fromBlock: bigint,
 ): Promise<ActivityItem[]> {
@@ -438,13 +440,31 @@ async function discoverActivity(
   // retrieves the complete relevant history for this snapshot.
   const snapshot = await client.getBlockNumber()
   const eventNames = ['LeaseCreated', 'Deposited', 'Withdrawn', 'Spent', 'Revoked', 'AllowlistUpdated'] as const
-  const logs = await getActivityLogsChunked(client, {
-    address: contract,
-    events: eventNames.map((name) => eventAbi(name)),
-    leaseIds,
-    fromBlock,
-    toBlock: snapshot,
-  })
+  const orderedLeaseIds = [...leaseIds].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+  const logs = (await loadIncrementalEventHistory({
+    identity: {
+      chainId,
+      contract,
+      wallet,
+      scope: 'activity',
+      // Include event set and exact lease-ID filter to prevent partial-history reuse.
+      filterKey: `${eventNames.join(',')}:${orderedLeaseIds.map((id) => id.toString()).join(',')}`,
+    },
+    deploymentBlock: fromBlock,
+    snapshotBlock: snapshot,
+    getBlockHash: async (block) => {
+      const result = await client.getBlock({ blockNumber: block })
+      if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
+      return result.hash
+    },
+    scan: (from, to) => getActivityLogsChunked(client, {
+      address: contract,
+      events: eventNames.map((name) => eventAbi(name)),
+      leaseIds: orderedLeaseIds,
+      fromBlock: from,
+      toBlock: to,
+    }),
+  })).events
 
   const times = await getBlockTimestamps(
     client,
@@ -499,7 +519,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, leases, getAgentPayEventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, gate.chainId, gate.address, leases, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
