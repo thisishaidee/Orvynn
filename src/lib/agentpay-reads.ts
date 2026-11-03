@@ -94,8 +94,7 @@ async function discoverLeases(
     return result.hash
   }
 
-  // Owner history is incrementally cached. Delegate discovery remains on its
-  // existing path until its independent stream is integrated and verified.
+  // Owner and delegate histories use independent wallet-scoped streams.
   const created = filter.owner
     ? (await loadIncrementalEventHistory({
         identity: {
@@ -115,13 +114,32 @@ async function discoverLeases(
           toBlock: to,
         }),
       })).events
-    : await getLogsChunked(client, {
-        address: contract,
-        event: eventAbi('LeaseCreated') as never,
-        args: filter,
-        fromBlock,
-        toBlock: snapshot,
-      })
+    : filter.delegate
+      ? (await loadIncrementalEventHistory({
+          identity: {
+            chainId,
+            contract,
+            wallet: filter.delegate,
+            scope: 'delegate-lease-created',
+          },
+          deploymentBlock: fromBlock,
+          snapshotBlock: snapshot,
+          getBlockHash,
+          scan: (from, to) => getLogsChunked(client, {
+            address: contract,
+            event: eventAbi('LeaseCreated') as never,
+            args: filter,
+            fromBlock: from,
+            toBlock: to,
+          }),
+        })).events
+      : await getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('LeaseCreated') as never,
+          args: filter,
+          fromBlock,
+          toBlock: snapshot,
+        })
 
   const ids = [...new Set(
     created
