@@ -132,6 +132,35 @@ describe('event history cache primitives', () => {
     assert.equal(snapshotReads, 4)
   })
 
+  it('keeps the previous checkpoint when an incremental RPC scan fails', async () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const original = [{ blockNumber: 1000n, transactionHash: '0xoriginal', logIndex: 0 }]
+    const saved = advanceEventHistoryCheckpoint({
+      identity, throughBlock: 1000n, blockHash: hashA, complete: true,
+    })
+    const key = eventHistoryCacheKey(identity)
+    writeStoredEventHistory(storage, key, identity, saved, original)
+
+    await assert.rejects(loadIncrementalEventHistory({
+      identity,
+      deploymentBlock: 100n,
+      snapshotBlock: 1100n,
+      storage,
+      getBlockHash: async (block) => block === 1000n ? hashA : hashB,
+      scan: async () => { throw new Error('RPC history scan failed') },
+    }), /RPC history scan failed/)
+
+    assert.deepEqual(readStoredEventHistory(storage, key, identity), {
+      checkpoint: saved,
+      events: original,
+    })
+  })
+
   it('rebuilds safely when the stored checkpoint is ahead of the current snapshot', async () => {
     const values = new Map<string, string>()
     const storage: EventHistoryStorage = {
