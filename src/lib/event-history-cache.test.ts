@@ -140,6 +140,29 @@ describe('event history cache primitives', () => {
     assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity, observedCheckpointBlockHash: hashA, overlapBlocks: 12n }), { fromBlock: 989n, toBlock: 1100n, mode: 'incremental' })
   })
 
+  it('rebuilds when the cached checkpoint is ahead of the current snapshot', () => {
+    assert.deepEqual(
+      planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 900n, checkpoint, identity, observedCheckpointBlockHash: hashA }),
+      { fromBlock: 100n, toBlock: 900n, mode: 'rebuild' },
+    )
+  })
+
+  it('isolates activity caches when the lease-id filter changes', () => {
+    const first = { ...identity, scope: 'activity' as const, filterKey: 'lease-1,lease-2' }
+    const second = { ...identity, scope: 'activity' as const, filterKey: 'lease-1,lease-3' }
+    assert.notEqual(eventHistoryCacheKey(first), eventHistoryCacheKey(second))
+    const firstCheckpoint = advanceEventHistoryCheckpoint({
+      identity: first, throughBlock: 1000n, blockHash: hashA, complete: true,
+    })
+    assert.equal(
+      planEventHistoryScan({
+        deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint: firstCheckpoint,
+        identity: second, observedCheckpointBlockHash: hashA,
+      }).mode,
+      'rebuild',
+    )
+  })
+
   it('forces a full rebuild when the checkpoint block hash changes', () => {
     assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity, observedCheckpointBlockHash: hashB }), { fromBlock: 100n, toBlock: 1100n, mode: 'rebuild' })
   })
