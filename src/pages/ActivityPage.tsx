@@ -12,6 +12,8 @@ import {
   type ActivityType,
 } from '@/lib/agentpay'
 
+const AMOUNT_EVENTS: ActivityType[] = ['Deposited', 'Spent', 'Withdrawn']
+
 const columns: Column<ActivityItem>[] = [
   { key: 'type', header: 'Type', primary: true, cell: (a) => ACTIVITY_LABELS[a.type] },
   {
@@ -19,7 +21,7 @@ const columns: Column<ActivityItem>[] = [
     header: 'Agent / lease',
     cell: (a) => (
       <span className="flex flex-col">
-        <span className="num font-mono text-support" title={a.agent}>{a.agent ? shortAddress(a.agent) : '—'}</span>
+        <span className="num font-mono text-support" title={a.agent}>{a.agent ? shortAddress(a.agent) : 'Not available'}</span>
         <span className="text-support text-ink-soft">Lease {a.leaseId}</span>
       </span>
     ),
@@ -28,15 +30,18 @@ const columns: Column<ActivityItem>[] = [
     key: 'recipient',
     header: 'Recipient',
     hideOnTablet: true,
-    cell: (a) => (a.recipient ? <span className="num font-mono text-support" title={a.recipient}>{shortAddress(a.recipient)}</span> : <span className="text-ink-mute">—</span>),
+    cell: (a) => (a.recipient ? <span className="num font-mono text-support" title={a.recipient}>{shortAddress(a.recipient)}</span> : <span className="text-ink-mute">Not applicable</span>),
   },
   {
     key: 'amount',
     header: 'Amount',
     align: 'right',
-    cell: (a) => (a.amount === undefined ? <span className="text-ink-mute">—</span> : <span className="num">{formatUsdc(a.amount)} USDC</span>),
+    cell: (a) => {
+      if (a.amount !== undefined) return <span className="num">{formatUsdc(a.amount)} USDC</span>
+      return <span className="text-ink-mute">{AMOUNT_EVENTS.includes(a.type) ? 'Unavailable' : 'Not applicable'}</span>
+    },
   },
-  { key: 'date', header: 'Date', cell: (a) => (a.timestamp ? formatDateTime(a.timestamp) : <span className="text-ink-mute">—</span>) },
+  { key: 'date', header: 'Date', cell: (a) => (a.timestamp ? formatDateTime(a.timestamp) : <span className="text-ink-mute">Unavailable</span>) },
   { key: 'status', header: 'Status', cell: (a) => <StatusBadge status={a.status === 'success' ? 'success' : a.status === 'failed' ? 'failed' : 'pending'} /> },
 ]
 
