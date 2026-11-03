@@ -109,7 +109,7 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
       `Nonce: ${nonce}`,
       `Issued At: ${new Date(challenge.created_at * 1000).toISOString()}`,
       `Expiration Time: ${new Date(challenge.expires_at * 1000).toISOString()}`,
-    ].join("\\n");
+    ].join("\n");
     if (!await verifyMessage({ address: wallet, message, signature })) {
       return json({ error: "Delegate wallet signature verification failed." }, 401);
     }
