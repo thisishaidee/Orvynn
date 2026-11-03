@@ -43,7 +43,7 @@ describe('event history cache primitives', () => {
     const events = [{ blockNumber: 12n, args: { leaseId: 9n, amount: 2500000n } }]
     assert.deepEqual(parseEventHistory<typeof events[number]>(serializeEventHistory(events)), events)
     assert.equal(parseEventHistory('not-json'), undefined)
-    assert.equal(parseEventHistory('\\u007b\\u0022no\\u0022\\u003a\\u0022array\\u0022\\u007d'), undefined)
+    assert.equal(parseEventHistory('{"no":"array"}'), undefined)
   })
 
   it('starts a first scan at deployment block', () => {
