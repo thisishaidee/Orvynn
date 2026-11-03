@@ -5,7 +5,7 @@
  */
 
 import { useQuery } from '@tanstack/react-query'
-import { type Address, type Hex, type PublicClient } from 'viem'
+import { parseEventLogs, type Address, type Hex, type PublicClient } from 'viem'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
 import { isSupportedChain } from '@/config'
 import { agentPayAbi } from '@/lib/agentpay-abi'
@@ -366,9 +366,129 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
   return { state: 'ready', items: query.data ?? [], reason: '' }
 }
 
-/** Activity for the connected owner. Waits for lease discovery so lease IDs are known. */
+/**
+ * Activity is intentionally independent from lease-list discovery.
+ * A single address-scoped log request retrieves the contract's event stream;
+ * LeaseCreated events identify this wallet's lease IDs, and the remaining
+ * events are filtered locally. If the RPC rejects the full range, fall back
+ * to the existing adaptive chunk reader. No lease, balance or transaction
+ * behaviour is changed by this read-only path.
+ */
+async function discoverOwnerActivity(
+  client: PublicClient,
+  contract: Address,
+  owner: Address,
+  fromBlock: bigint,
+): Promise<ActivityItem[]> {
+  let logs
+  try {
+    logs = await client.getLogs({ address: contract, fromBlock, toBlock: 'latest' })
+  } catch {
+    // If the provider enforces a maximum range for the unfiltered request,
+    // fall back to bounded event-specific scans in parallel.
+    const names = ['LeaseCreated', 'Deposited', 'Spent', 'Revoked', 'Withdrawn', 'AllowlistUpdated'] as const
+    const batches = await Promise.all(
+      names.map((name) =>
+        getLogsChunked(client, {
+          address: contract,
+          event: eventAbi(name),
+          args: name === 'LeaseCreated' ? { owner } : undefined,
+          fromBlock,
+        }),
+      ),
+    )
+    logs = batches.flat()
+  }
+
+  const decoded = parseEventLogs({ abi: agentPayAbi, logs, strict: false })
+  const delegatesByLease = new Map<string, Address>()
+  for (const log of decoded) {
+    if (log.eventName !== 'LeaseCreated') continue
+    const args = log.args as { leaseId?: bigint; owner?: Address; delegate?: Address } | undefined
+    if (
+      args?.leaseId !== undefined &&
+      args.owner?.toLowerCase() === owner.toLowerCase() &&
+      args.delegate
+    ) {
+      delegatesByLease.set(args.leaseId.toString(), args.delegate)
+    }
+  }
+
+  if (delegatesByLease.size === 0) return []
+  const relevant = decoded.filter((log) => {
+    const leaseId = (log.args as { leaseId?: bigint } | undefined)?.leaseId
+    return leaseId !== undefined && delegatesByLease.has(leaseId.toString())
+  })
+  const times = await blockTimestamps(
+    client,
+    relevant.map((log) => log.blockNumber).filter((n): n is bigint => n !== null),
+  )
+
+  const items: ActivityItem[] = relevant.map((entry) => {
+    const log = entry as {
+      args?: {
+        leaseId?: bigint
+        owner?: Address
+        delegate?: Address
+        recipient?: Address
+        amount?: bigint
+        allowed?: boolean
+      }
+      eventName?: string
+      blockNumber: bigint | null
+      transactionHash: Hex | null
+      logIndex: number | null
+    }
+    const args = log.args ?? {}
+    const leaseId = args.leaseId?.toString() ?? '0'
+    const type = (log.eventName ?? 'LeaseCreated') as ActivityType
+    const timestamp = log.blockNumber !== null ? times.get(log.blockNumber.toString()) : undefined
+    return {
+      id: `${log.transactionHash}-${log.logIndex}`,
+      type,
+      leaseId,
+      agent: activityAgent(type, args, delegatesByLease.get(leaseId)),
+      recipient: args.recipient,
+      amount: args.amount,
+      timestamp,
+      txHash: (log.transactionHash ?? '0x') as Hex,
+      status: 'success',
+    }
+  })
+
+  return items.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+}
+
 export function useOwnerActivityQuery(): DataSource<ActivityItem> {
-  const leases = useOwnerLeases()
-  const ready = leases.state === 'ready'
-  return useOwnerActivity(leases.items, ready)
+  const gate = useReadGate()
+  const query = useQuery({
+    queryKey: [
+      'agentpay',
+      'activity',
+      gate.ok ? gate.chainId : 0,
+      gate.ok ? gate.contract : 'none',
+      gate.ok ? gate.address : 'none',
+    ],
+    enabled: gate.ok,
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
+    retry: 1,
+    refetchOnWindowFocus: false,
+    queryFn: () => {
+      if (!gate.ok) return []
+      return discoverOwnerActivity(
+        gate.client,
+        gate.contract,
+        gate.address,
+        eventStartBlock(gate.chainId),
+      )
+    },
+  })
+
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.' }
+  if (query.isError) {
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.' }
+  }
+  return { state: 'ready', items: query.data ?? [], reason: '' }
 }
