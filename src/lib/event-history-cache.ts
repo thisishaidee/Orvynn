@@ -10,7 +10,7 @@ export type EventHistoryIdentity = {
   chainId: number
   contract: string
   wallet: string
-  scope: 'owner-leases' | 'delegate-leases' | 'activity'
+  scope: 'owner-lease-created' | 'owner-allowlist' | 'delegate-lease-created' | 'activity'
 }
 
 export type EventHistoryCheckpoint = {
@@ -49,6 +49,7 @@ export function eventHistoryCacheKey(identity: EventHistoryIdentity): string {
     normalizeAddress(identity.contract),
     normalizeAddress(identity.wallet),
     identity.scope,
+    identity.filterKey ?? '',
   ].join(':')
 }
 
@@ -80,7 +81,8 @@ export function planEventHistoryScan(input: {
     checkpoint.chainId === identity.chainId &&
     normalizeAddress(checkpoint.contract) === normalizeAddress(identity.contract) &&
     normalizeAddress(checkpoint.wallet) === normalizeAddress(identity.wallet) &&
-    checkpoint.scope === identity.scope
+    checkpoint.scope === identity.scope &&
+    (checkpoint.filterKey ?? '') === (identity.filterKey ?? '')
 
   if (!sameIdentity) {
     return { fromBlock: deploymentBlock, toBlock: snapshotBlock, mode: 'rebuild' }
@@ -146,6 +148,7 @@ export function advanceEventHistoryCheckpoint(input: {
     normalizeAddress(input.previous.contract) === normalizeAddress(input.identity.contract) &&
     normalizeAddress(input.previous.wallet) === normalizeAddress(input.identity.wallet) &&
     input.previous.scope === input.identity.scope &&
+    (input.previous.filterKey ?? '') === (input.identity.filterKey ?? '') &&
     input.throughBlock < BigInt(input.previous.throughBlock)
   ) {
     throw new Error('Event-history checkpoint cannot move backwards.')
@@ -156,6 +159,7 @@ export function advanceEventHistoryCheckpoint(input: {
     contract: normalizeAddress(input.identity.contract),
     wallet: normalizeAddress(input.identity.wallet),
     scope: input.identity.scope,
+    ...(input.identity.filterKey ? { filterKey: input.identity.filterKey } : {}),
     throughBlock: input.throughBlock.toString(),
     blockHash: input.blockHash.toLowerCase(),
   }
