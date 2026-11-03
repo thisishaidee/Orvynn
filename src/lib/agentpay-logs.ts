@@ -61,9 +61,9 @@ type RawRpcLog = {
 }
 
 /**
- * Only split requests when the provider explicitly signals a query/range limit.
- * Rate limits, timeouts and transport failures must fail fast so recursive
- * splitting does not amplify pressure on an already unhealthy RPC endpoint.
+ * Split requests only for explicit query/range limits. Rate limits receive a
+ * small bounded exponential-backoff retry on the same range; timeouts and
+ * transport failures fail fast rather than multiplying RPC traffic.
  */
 export function isRangeLimitError(error: unknown): boolean {
   const seen = new Set<unknown>()
