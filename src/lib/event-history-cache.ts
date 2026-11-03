@@ -11,6 +11,7 @@ export type EventHistoryIdentity = {
   contract: string
   wallet: string
   scope: 'owner-lease-created' | 'owner-allowlist' | 'delegate-lease-created' | 'activity'
+  filterKey?: string
 }
 
 export type EventHistoryCheckpoint = {
