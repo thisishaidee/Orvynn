@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { privateKeyToAccount } from "viem/accounts";
-import { onRequestPost as createChallenge } from "../../functions/api/agent/delegate-auth/challenge";
-import { onRequestPost as readInbox } from "../../functions/api/agent/delegate-auth/inbox";
+import { onRequestPost as createChallenge } from "../../functions/api/agent/delegate-auth/challenge.js";
+import { onRequestPost as readInbox } from "../../functions/api/agent/delegate-auth/inbox.js";
 
 type NonceRow = { wallet_address: string; created_at: number; expires_at: number };
 type PaymentRow = {
   id: string; lease_id: string; delegate_address: string; recipient_address: string;
   amount_usdc: string; purpose: string | null; chain_id: number; agentpay_address: string;
-  status: string; created_at: number; expires_at: number;
+  status: string; created_at: number; expires_at: number; updated_at?: number;
 };
 
 function mockDb(seed: PaymentRow[] = []) {
