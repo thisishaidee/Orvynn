@@ -12,6 +12,7 @@ const identity = {
   chainId: 5042,
   contract: '0xABCDEF',
   wallet: '0x123456',
+  scope: 'owner-leases' as const,
 }
 const hashA = `0x${'a'.repeat(64)}`
 const hashB = `0x${'b'.repeat(64)}`
@@ -20,6 +21,7 @@ const checkpoint: EventHistoryCheckpoint = {
   chainId: 5042,
   contract: '0xabcdef',
   wallet: '0x123456',
+  scope: 'owner-leases',
   throughBlock: '1000',
   blockHash: hashA,
 }
@@ -28,6 +30,7 @@ describe('event history cache primitives', () => {
   it('scopes cache keys by chain, contract and wallet, case-insensitively', () => {
     assert.equal(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, contract: '0xabcdef', wallet: '0x123456' }))
     assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, chainId: 5042002 }))
+    assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, scope: 'delegate-leases' }))
   })
 
   it('starts a first scan at deployment block', () => {
@@ -67,6 +70,7 @@ describe('event history cache primitives', () => {
       chainId: 5042,
       contract: '0xabcdef',
       wallet: '0x123456',
+      scope: 'owner-leases',
       throughBlock: '1200',
       blockHash: hashB,
     })
