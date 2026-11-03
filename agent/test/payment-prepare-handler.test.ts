@@ -93,7 +93,7 @@ const delegate = "0x2222222222222222222222222222222222222222";
 const recipient = "0x3333333333333333333333333333333333333333";
 const contractUsdc = "0x3600000000000000000000000000000000000000";
 
-function rpcClient(options: { allowance?: bigint; recipientAllowed?: boolean } = {}) {
+function rpcClient(options: { allowance?: bigint; recipientAllowed?: boolean; lease?: unknown } = {}) {
   const calls: string[] = [];
   const client = {
     getChainId: async () => 5042,
@@ -182,4 +182,64 @@ test("rejects a non-Arc RPC chain before reading lease state", async () => {
   assert.equal(response.status, 422);
   assert.match(String(body.error), /chain ID 5042/i);
   assert.equal(calls.length, 0);
+});
+
+
+test("rejects a request from a wallet that is not the registered delegate", async () => {
+  const { client, calls } = rpcClient();
+  const body = JSON.stringify({
+    leaseId: "7",
+    delegate: "0x4444444444444444444444444444444444444444",
+    recipient,
+    amountUsdc: "1",
+    purpose: "Delegate mismatch"
+  });
+  const response = await onRequestPost(
+    { request: request(body, `Bearer ${token}`), env },
+    { createClient: () => client as never }
+  );
+  assert.equal(response.status, 422);
+  assert.match(String((await responseBody(response)).error), /not the delegate registered/i);
+  assert.ok(!calls.includes("spend"));
+});
+
+test("rejects a revoked lease before simulation", async () => {
+  const { client, calls } = rpcClient({
+    lease: [owner, delegate, 1_000_000n, 86_400n, 1_900_000_000n, 0n, 0n, 0n, 5_000_000n, false, true]
+  });
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  assert.equal(response.status, 422);
+  assert.match(String((await responseBody(response)).error), /revoked/i);
+  assert.ok(!calls.includes("spend"));
+});
+
+test("rejects an expired lease before simulation", async () => {
+  const { client, calls } = rpcClient({
+    lease: [owner, delegate, 1_000_000n, 86_400n, 1_700_000_000n, 0n, 0n, 0n, 5_000_000n, false, false]
+  });
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  assert.equal(response.status, 422);
+  assert.match(String((await responseBody(response)).error), /expired/i);
+  assert.ok(!calls.includes("spend"));
+});
+
+test("rejects a recipient excluded by an enabled allowlist", async () => {
+  const { client, calls } = rpcClient({
+    recipientAllowed: false,
+    lease: [owner, delegate, 1_000_000n, 86_400n, 1_900_000_000n, 0n, 0n, 0n, 5_000_000n, true, false]
+  });
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  assert.equal(response.status, 422);
+  assert.match(String((await responseBody(response)).error), /not on this lease's allowlist/i);
+  assert.ok(calls.includes("allowedRecipients"));
+  assert.ok(!calls.includes("spend"));
 });
