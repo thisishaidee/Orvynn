@@ -1,4 +1,4 @@
-import { createPublicClient, defineChain, formatUnits, getAddress, http } from "viem";
+import { createPublicClient, defineChain, fallback, formatUnits, getAddress, http } from "viem";
 import { agentPayAbi } from "../../../../agent/src/agentpay-abi.js";
 import { assertLeasePaymentAllowed } from "../../../../agent/src/lease-payment-guards.js";
 import { validatePaymentInput } from "../../../../agent/src/payment-validation.js";
@@ -82,16 +82,22 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     const contract = getAddress(env.AGENTPAY_ADDRESS || DEFAULT_AGENTPAY);
     const usdc = getAddress(env.USDC_ADDRESS || DEFAULT_USDC);
     const arc = defineChain({ id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
-    const client = createPublicClient({ chain: arc, transport: http(rpcUrl) });
-    if (await client.getChainId() !== 5042) throw new Error("RPC is not connected to Arc Mainnet (chain ID 5042).");
+    const rpcUrls = [...new Set([rpcUrl, "https://rpc.arc-scan.org", "https://rpc.mainnet.arc.io"])];
+    const client = createPublicClient({
+      chain: arc,
+      // Prefer the configured endpoint and fail over to the web app's Arc RPCs.
+      transport: fallback(rpcUrls.map((url) => http(url)))
+    });
 
     const payment = validatePaymentInput(input);
-    const [lease, allowance, latestBlock, configuredUsdc] = await Promise.all([
+    const [chainId, lease, allowance, latestBlock, configuredUsdc] = await Promise.all([
+      client.getChainId(),
       client.readContract({ address: contract, abi: agentPayAbi, functionName: "leases", args: [payment.leaseId] }),
       client.readContract({ address: contract, abi: agentPayAbi, functionName: "remainingAllowance", args: [payment.leaseId] }),
       client.getBlock({ blockTag: "latest" }),
       client.readContract({ address: contract, abi: agentPayAbi, functionName: "USDC" })
     ]);
+    if (chainId !== 5042) throw new Error("RPC is not connected to Arc Mainnet (chain ID 5042).");
     if (configuredUsdc.toLowerCase() !== usdc.toLowerCase()) throw new Error("Configured USDC address does not match the token configured in the deployed Orvynn contract (AgentPay).");
     const [owner, delegate, , , expiry, , , , balance, allowlistEnabled, revoked] = lease;
     const recipientAllowed = allowlistEnabled

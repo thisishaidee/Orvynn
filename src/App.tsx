@@ -12,6 +12,7 @@ import { ActivityPage } from '@/pages/ActivityPage'
 import { AgentsPage } from '@/pages/AgentsPage'
 import { LeasesPage } from '@/pages/LeasesPage'
 import { DeployPage } from '@/pages/DeployPage'
+import { TestnetDeployPage } from '@/pages/TestnetDeployPage'
 import { LandingPage } from '@/pages/LandingPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { SettingsPage } from '@/pages/SettingsPage'
@@ -39,6 +40,8 @@ function renderPage(page: PageId, navigate: (page: PageId) => void, canAccessDep
       return <ActivityPage />
     case 'wallet':
       return <WalletPage />
+    case 'deploy-testnet':
+      return <TestnetDeployPage />
     case 'deploy':
       return canAccessDeploy ? <DeployPage /> : (
         <div className="space-y-6">

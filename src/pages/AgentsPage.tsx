@@ -62,9 +62,9 @@ export function AgentsPage() {
         actions={<a href="/?page=leases" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-navy px-5 text-sm font-medium text-white shadow-card transition hover:bg-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Create a lease <ArrowRight className="size-4" aria-hidden /></a>}
       />
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Agents identified" value={source.state === 'ready' ? agents.length : undefined} icon={<Bot className="size-4" />} hint="Unique delegate wallets" />
-        <StatCard label="Active agents" value={source.state === 'ready' ? agents.filter((a) => a.canSpend).length : undefined} icon={<Activity className="size-4" />} hint="With an active lease" />
-        <StatCard label="Leases assigned" value={source.state === 'ready' ? source.items.length : undefined} icon={<WalletCards className="size-4" />} hint="Across all delegate wallets" />
+        <StatCard label="Agents identified" value={source.state === 'ready' ? agents.length : undefined} loading={source.state === 'loading'} icon={<Bot className="size-4" />} hint="Unique delegate wallets" />
+        <StatCard label="Active agents" value={source.state === 'ready' ? agents.filter((a) => a.canSpend).length : undefined} loading={source.state === 'loading'} icon={<Activity className="size-4" />} hint="With an active lease" />
+        <StatCard label="Leases assigned" value={source.state === 'ready' ? source.items.length : undefined} loading={source.state === 'loading'} icon={<WalletCards className="size-4" />} hint="Across all delegate wallets" />
       </div>
       <NotConnectedNotice subject="Agents" />
 
@@ -105,6 +105,7 @@ export function AgentsPage() {
           getRowId={(a) => a.address}
           loading={source.state === 'loading'}
           error={source.state === 'error' ? source.reason : undefined}
+          onRetry={source.refetch}
           empty={
             <SourceEmpty
               state={source.state}

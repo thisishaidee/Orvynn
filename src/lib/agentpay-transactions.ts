@@ -64,12 +64,18 @@ export function useAgentPayTransactions() {
     if (receipt.status !== 'success') {
       throw new Error(`Transaction ${hash} was mined but reverted.`)
     }
-    // The receipt is the confirmation boundary. Refresh dashboard data in the
-    // background so the wallet flow does not remain blocked by follow-up reads.
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'] }),
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'] }),
-    ]).catch(() => undefined)
+    // The receipt is the confirmation boundary. Invalidate immediately, then
+    // retry the read refresh briefly: public RPC log indexes can lag behind a
+    // mined receipt, so the first eth_getLogs request may not include this tx.
+    const refreshAgentPayData = () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
+      ]).catch(() => undefined)
+    }
+    refreshAgentPayData()
+    setTimeout(refreshAgentPayData, 1_500)
+    setTimeout(refreshAgentPayData, 4_000)
     return { hash, blockNumber: receipt.blockNumber }
   }, [publicClient, queryClient])
 
@@ -186,12 +192,11 @@ export function useAgentPayTransactions() {
   }, [assertReady, walletClient, connectedAddress, waitForSuccess])
 
   const spend = useCallback(async (leaseId: bigint, recipient: Address, amount: bigint): Promise<TransactionResult> => {
-    const { contract, account, chainId } = assertReady()
+    const { contract, account } = assertReady()
     if (!walletClient || !publicClient) throw new Error('The wallet and Arc network clients are unavailable.')
     if (walletClient.account?.address.toLowerCase() !== account.toLowerCase()) {
       throw new Error('The active signer does not match the connected delegate wallet.')
     }
-    if (chainId !== 5042) throw new Error('Agent payment requests are currently supported on Arc Mainnet only.')
     const input = validatePaymentInput({
       leaseId,
       delegate: account,

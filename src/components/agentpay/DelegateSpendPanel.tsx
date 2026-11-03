@@ -73,8 +73,8 @@ export function DelegateSpendPanel() {
         description="Review a payment request from an agent. Orvynn checks the assigned lease, then your delegate wallet must explicitly approve the transaction."
       />
       {source.state !== 'ready' ? (
-        <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
-          {source.reason}
+        <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : source.state === 'error' ? 'Could not load assigned leases' : 'Loading assigned leases'}>
+          <div className="space-y-2">{source.reason}{source.state === 'error' && <div><Button size="sm" variant="secondary" onClick={source.refetch}>Retry lease lookup</Button></div>}</div>
         </Notice>
       ) : activeLeases.length === 0 ? (
         <Notice tone="info" title="No active leases assigned">

@@ -31,10 +31,9 @@ export type PaymentRequest = {
 export async function prepareLeasePayment(request: PaymentRequest): Promise<PreparedPayment> {
   const input = validatePaymentInput(request);
 
-  const chainId = await publicClient.getChainId();
-  if (chainId !== 5042) throw new Error(`Wrong network: expected Arc Mainnet 5042, received ${chainId}.`);
-
-  const [lease, allowance, latestBlock] = await Promise.all([
+  // Verify the chain while the independent read-only preflight requests run.
+  const [chainId, lease, allowance, latestBlock] = await Promise.all([
+    publicClient.getChainId(),
     publicClient.readContract({
       address: agentPayAddress,
       abi: agentPayAbi,
@@ -49,6 +48,7 @@ export async function prepareLeasePayment(request: PaymentRequest): Promise<Prep
     }),
     publicClient.getBlock({ blockTag: "latest" })
   ]);
+  if (chainId !== 5042) throw new Error(`Wrong network: expected Arc Mainnet 5042, received ${chainId}.`);
   const [owner, registeredDelegate, , , expiry, , , , balance, allowlistEnabled, revoked] = lease;
 
   let recipientAllowed = false;

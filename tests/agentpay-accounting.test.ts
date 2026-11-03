@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import type { Address, PublicClient } from 'viem'
+import type { Address, Hex, PublicClient } from 'viem'
 import { activityAgent, currentPeriodSpent, currentWindowIndex } from '../src/lib/agentpay-accounting'
 import { getLogsChunked } from '../src/lib/agentpay-logs'
 
@@ -57,7 +57,7 @@ describe('event pagination completeness', () => {
   test('throws instead of returning partial logs when the chunk limit is hit', async () => {
     let calls = 0
     const client = {
-      getBlockNumber: async () => 100_000_000n,
+      getBlockNumber: async () => 600_000_000n,
       getLogs: async () => {
         calls += 1
         return []
@@ -69,7 +69,94 @@ describe('event pagination completeness', () => {
       event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow(/Incomplete event history/)
-    expect(calls).toBe(10_000)
+    expect(calls).toBe(0)
+  })
+})
+
+
+describe('large bounded log ranges', () => {
+  test('uses 50,000-block ranges for fewer RPC round trips', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        return []
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 100_000n,
+    })).resolves.toEqual([])
+
+    expect(ranges).toEqual([
+      [0n, 49_999n],
+      [50_000n, 99_999n],
+      [100_000n, 100_000n],
+    ])
+  })
+
+
+  test('does not split a rate-limited request into more RPC calls', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        throw new Error('HTTP 429: rate limit exceeded')
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).rejects.toThrow(/rate limit exceeded/)
+
+    expect(ranges).toEqual([[0n, 49_999n]])
+  })
+
+  test('does not split a timed-out request into more RPC calls', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        throw new Error('request timed out')
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).rejects.toThrow(/timed out/)
+
+    expect(ranges).toEqual([[0n, 49_999n]])
+  })
+
+  test('splits a rejected large range and still returns the complete result', async () => {
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        if (toBlock - fromBlock + 1n > 25_000n) throw new Error('range too large')
+        return []
+      },
+    } as unknown as PublicClient
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 49_999n,
+    })).resolves.toEqual([])
+
+    expect(ranges).toContainEqual([0n, 49_999n])
+    expect(ranges).toContainEqual([0n, 24_999n])
+    expect(ranges).toContainEqual([25_000n, 49_999n])
   })
 })
 
@@ -87,5 +174,86 @@ describe('allowlist read failure', () => {
       event: { type: 'event', name: 'AllowlistUpdated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow('allowlist rpc failed')
+  })
+})
+
+describe('bounded event log reads', () => {
+  test('uses a lease-ID indexed event filter and respects a pinned snapshot', async () => {
+    const calls: Array<Record<string, unknown>> = []
+    const client = {
+      getLogs: async (params: Record<string, unknown>) => {
+        calls.push(params)
+        return []
+      },
+    } as unknown as PublicClient
+
+    const event = {
+      type: 'event',
+      name: 'Deposited',
+      inputs: [{ name: 'leaseId', type: 'uint256', indexed: true }],
+    } as never
+
+    await expect(getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event,
+      args: { leaseId: [1n, 2n] },
+      fromBlock: 10n,
+      toBlock: 20n,
+    })).resolves.toEqual([])
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].fromBlock).toBe(10n)
+    expect(calls[0].toBlock).toBe(20n)
+    expect(calls[0].event).toEqual(event)
+    expect(calls[0].args).toEqual({ leaseId: [1n, 2n] })
+  })
+})
+
+
+describe('combined AgentPay activity log query', () => {
+  test('uses one topic-filtered RPC query for all six event signatures and decodes the event', async () => {
+    const { agentPayAbi } = await import('../src/lib/agentpay-abi')
+    const { encodeAbiParameters, toEventSelector } = await import('viem')
+    const { getActivityLogsChunked } = await import('../src/lib/agentpay-logs')
+    const events = agentPayAbi.filter((item) => item.type === 'event')
+    const revoked = events.find((event) => event.name === 'Revoked')
+    if (!revoked) throw new Error('Revoked ABI event is missing')
+
+    const leaseId = 7n
+    const idTopic = encodeAbiParameters([{ type: 'uint256' }], [leaseId])
+    const eventTopic = toEventSelector(revoked)
+    const txHash = `0x${'11'.repeat(32)}` as const
+    const requests: Array<Record<string, unknown>> = []
+    const client = {
+      request: async (request: Record<string, unknown>) => {
+        requests.push(request)
+        return [{
+          data: '0x',
+          topics: [eventTopic, idTopic],
+          blockNumber: '0xa',
+          transactionHash: txHash,
+          logIndex: '0x0',
+        }]
+      },
+    } as unknown as PublicClient
+
+    const result = await getActivityLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      events,
+      leaseIds: [leaseId],
+      fromBlock: 10n,
+      toBlock: 20n,
+    })
+
+    expect(requests).toHaveLength(1)
+    const filter = (requests[0].params as Array<Record<string, unknown>>)[0]
+    const topics = filter.topics as Hex[][]
+    expect(topics[0]).toHaveLength(6)
+    expect(topics[1]).toEqual([idTopic])
+    expect(result).toHaveLength(1)
+    expect(result[0].eventName).toBe('Revoked')
+    expect(result[0].args.leaseId).toBe(leaseId)
+    expect(result[0].blockNumber).toBe(10n)
+    expect(result[0].logIndex).toBe(0)
   })
 })

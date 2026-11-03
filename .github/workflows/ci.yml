@@ -66,5 +66,8 @@ jobs:
       - name: Run frontend unit tests
         run: bun test
 
+      - name: Verify live Arc read paths (read-only)
+        run: bun run scripts/verify-arc-read-paths.ts
+
       - name: Build frontend
         run: bun run build
