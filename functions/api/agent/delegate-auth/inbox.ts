@@ -31,6 +31,15 @@ type PendingRequest = {
   expires_at: number;
 };
 
+function configuredOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) return null;
+    return url.origin;
+  } catch { return null; }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -56,7 +65,8 @@ async function readJson(request: Request): Promise<Record<string, unknown>> {
 
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Delegate inbox storage is not configured." }, 503);
-  if (!env.ORVYNN_APP_ORIGIN) return json({ error: "Delegate authentication origin is not configured." }, 503);
+  const appOrigin = configuredOrigin(env.ORVYNN_APP_ORIGIN);
+  if (!appOrigin) return json({ error: "Delegate authentication origin must be configured as a canonical HTTPS origin." }, 503);
 
   let body: Record<string, unknown>;
   let wallet: string;
@@ -87,12 +97,11 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
       return json({ error: "Authentication challenge is missing, expired or belongs to another wallet." }, 401);
     }
 
-    const origin = new URL(env.ORVYNN_APP_ORIGIN).origin;
     const message = [
       "Orvynn delegate payment inbox authentication",
       "",
       "This signature proves wallet control for one inbox request. It does not authorize or submit a payment.",
-      `Origin: ${origin}`,
+      `Origin: ${appOrigin}`,
       `Wallet: ${wallet}`,
       `Nonce: ${body.nonce as string}`,
       `Issued At: ${new Date(challenge.created_at * 1000).toISOString()}`,
