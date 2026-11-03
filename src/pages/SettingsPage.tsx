@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react'
-import { Check, X, Wallet, Network, SlidersHorizontal, ShieldCheck, Info } from 'lucide-react'
+import { Check, X, Wallet, Network, ShieldCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { arc, arcTestnet } from 'viem/chains'
 import { Badge, Card, CardHeader, PageHeader } from '@/components/ui'
 import { InfoList, InfoRow } from '@/components/agentpay/Notices'
-import { BRAND } from '@/lib/brand'
-import { walletConnectEnabled } from '@/config'
 import { shortAddress } from '@/lib/agentpay'
 import { useNetworkInfo } from '@/lib/wallet'
 import { getAgentPayAddress } from '@/lib/agentpay-address'
@@ -44,11 +42,9 @@ export function SettingsPage() {
   const { address, isConnected, connector } = useAccount()
   const network = useNetworkInfo()
   const contractAddress = getAgentPayAddress(network.chainId)
-  const mainnetAddress = getAgentPayAddress(arc.id)
-  const testnetAddress = getAgentPayAddress(arcTestnet.id)
   const contractConfigured = network.chainId !== undefined
     ? Boolean(contractAddress)
-    : Boolean(mainnetAddress || testnetAddress)
+    : Boolean(getAgentPayAddress(arc.id) || getAgentPayAddress(arcTestnet.id))
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -88,14 +84,6 @@ export function SettingsPage() {
           </InfoList>
         </Section>
 
-        <Section title="Application preferences" description="Current display defaults for this workspace." icon={SlidersHorizontal}>
-          <InfoList>
-            <InfoRow label="Theme">Light</InfoRow>
-            <InfoRow label="Currency display">USDC, 6 decimal places</InfoRow>
-            <InfoRow label="Language">English</InfoRow>
-          </InfoList>
-        </Section>
-
         <Section title="Security information" icon={ShieldCheck}>
           <ul className="divide-y divide-line">
             <Fact ok>This app never asks for your private key or recovery phrase. Your wallet signs every action.</Fact>
@@ -112,32 +100,6 @@ export function SettingsPage() {
           </ul>
         </Section>
       </div>
-
-      <Section title={`About ${BRAND.name}`} icon={Info}>
-        <InfoList>
-          <InfoRow label="Product">{BRAND.name}</InfoRow>
-          <InfoRow label="Purpose">{BRAND.tagline}</InfoRow>
-          <InfoRow label="Stage">Prototype.</InfoRow>
-          <InfoRow label="Contract">
-            {network.chainId !== undefined
-              ? contractAddress
-                ? <span className="num font-mono text-support" title={contractAddress}>{shortAddress(contractAddress)}</span>
-                : 'Not configured for this network'
-              : mainnetAddress
-                ? <span className="num font-mono text-support" title={mainnetAddress}>Arc Mainnet: {shortAddress(mainnetAddress)}</span>
-                : testnetAddress
-                  ? <span className="num font-mono text-support" title={testnetAddress}>Arc Testnet: {shortAddress(testnetAddress)}</span>
-                  : 'Not configured'}</InfoRow>
-          <InfoRow label="Wallet connections">
-            Browser wallets, Coinbase Wallet{walletConnectEnabled ? ', WalletConnect' : ' (WalletConnect not configured)'}
-          </InfoRow>
-          <InfoRow label="Source code">
-            <a href={BRAND.repoUrl} target="_blank" rel="noopener noreferrer" className="font-medium text-brand-blue underline-offset-2 hover:underline">
-              GitHub repository
-            </a>
-          </InfoRow>
-        </InfoList>
-      </Section>
     </div>
   )
 }

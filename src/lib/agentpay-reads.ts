@@ -240,12 +240,12 @@ export function useDelegateLeases(): DataSource<Lease> {
   const query = useQuery({
     queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
-    staleTime: 15_000,
+    staleTime: 60_000,
     gcTime: 5 * 60_000,
     retry: 1,
     initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
     // Cached snapshots render immediately but are always revalidated on Arc.
-    initialDataUpdatedAt: 0,
+    initialDataUpdatedAt: Date.now(),
     queryFn: () => {
       if (!gate.ok) return []
       return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, getAgentPayEventStartBlock(gate.chainId), false)
@@ -318,12 +318,12 @@ export function useOwnerLeases(): DataSource<Lease> {
   const query = useQuery({
     queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
-    staleTime: 15_000,
+    staleTime: 60_000,
     gcTime: 5 * 60_000,
     retry: 1,
     // Render the last known lease snapshot immediately; it is never used to authorise a transaction.
     initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
-    initialDataUpdatedAt: 0,
+    initialDataUpdatedAt: Date.now(),
     queryFn: () => {
       if (!gate.ok) return []
       return discoverLeases(gate.client, gate.contract, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))

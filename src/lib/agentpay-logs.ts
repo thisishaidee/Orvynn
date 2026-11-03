@@ -20,7 +20,7 @@ import { agentPayAbi } from '@/lib/agentpay-abi'
 const INITIAL_CHUNK = 10_000n
 const MIN_CHUNK = 1n
 const MAX_RPC_REQUESTS = 10_000
-const CONCURRENCY = 1
+const CONCURRENCY = 3
 const MAX_RATE_LIMIT_RETRIES = 5
 const RATE_LIMIT_BASE_DELAY_MS = 500
 const MAX_LEASE_IDS_PER_QUERY = 100
@@ -195,6 +195,8 @@ async function fetchChunkedRanges<T>(
     }
   }
 
+  // A small bounded parallel window avoids serial round-trip latency while
+  // keeping RPC pressure predictable. Adaptive splits remain sequential per range.
   const results: T[][] = []
   for (let offset = 0; offset < ranges.length; offset += CONCURRENCY) {
     const batch = ranges.slice(offset, offset + CONCURRENCY)
