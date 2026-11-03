@@ -73,6 +73,20 @@ describe('event history cache primitives', () => {
     assert.equal(values.has('key'), false)
   })
 
+  it('skips oversized cache writes without replacing the existing checkpoint', () => {
+    const values = new Map<string, string>([['key', 'previous-cache-value']])
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+    const largeEvents = [{ payload: 'x'.repeat(1_500_000) }]
+
+    assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, largeEvents), false)
+    assert.equal(values.get('key'), 'previous-cache-value')
+  })
+
   it('rejects and removes a cache envelope belonging to another stream', () => {
     const values = new Map<string, string>()
     const storage: EventHistoryStorage = {
