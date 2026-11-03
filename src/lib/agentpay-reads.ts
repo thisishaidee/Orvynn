@@ -13,19 +13,9 @@ import { agentPayAddressEnvVar, getAgentPayAddress } from '@/lib/agentpay-addres
 import type { ActivityItem, ActivityType, DataSource, Lease } from '@/lib/agentpay'
 import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
 import { getActivityLogsChunked, getLogsChunked } from '@/lib/agentpay-logs'
+import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
-// Verified deployment blocks keep event discovery scoped to this contract's lifetime.
-// Arc Mainnet AgentPay deployment: block 28,888,842.
-// Arc Testnet AgentPay deployment: block 70,433,685 (tx 0xe16ef5ea...).
-const MAINNET_DEPLOYMENT_BLOCK = 28_888_842n
-const TESTNET_DEPLOYMENT_BLOCK = 70_433_685n
-
-export function getAgentPayEventStartBlock(chainId: number): bigint {
-  if (chainId === 5042) return MAINNET_DEPLOYMENT_BLOCK
-  if (chainId === 5042002) return TESTNET_DEPLOYMENT_BLOCK
-  throw new Error(`No verified AgentPay event start block is configured for chain ${chainId}. Refusing to scan from genesis.`)
-}
 
 export type ReadGate =
   | { ok: false; state: 'disconnected' | 'unsupported-network' | 'missing-address'; reason: string }
