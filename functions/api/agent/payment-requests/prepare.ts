@@ -82,10 +82,9 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     const contract = getAddress(env.AGENTPAY_ADDRESS || DEFAULT_AGENTPAY);
     const usdc = getAddress(env.USDC_ADDRESS || DEFAULT_USDC);
     const arc = defineChain({ id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
+    const payment = validatePaymentInput(input);
     const client = createPublicClient({ chain: arc, transport: http(rpcUrl) });
     if (await client.getChainId() !== 5042) throw new Error("RPC is not connected to Arc Mainnet (chain ID 5042).");
-
-    const payment = validatePaymentInput(input);
     const [lease, allowance, latestBlock, configuredUsdc] = await Promise.all([
       client.readContract({ address: contract, abi: agentPayAbi, functionName: "leases", args: [payment.leaseId] }),
       client.readContract({ address: contract, abi: agentPayAbi, functionName: "remainingAllowance", args: [payment.leaseId] }),
