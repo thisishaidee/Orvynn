@@ -51,6 +51,10 @@ export function useUsdcBalance(): { state: BalanceState; formatted?: string; ref
   if (!onArc) return { state: 'unsupported-network', refetch: () => void refetch() }
   if (isError) return { state: 'error', refetch: () => void refetch() }
   if (isPending || data === undefined) return { state: 'loading', refetch: () => void refetch() }
-  const [whole, fraction = ''] = formatUnits(data, 6).split('.')
-  return { state: 'ready', formatted: `${BigInt(whole).toLocaleString('en-US')}.${fraction.padEnd(2, '0')}`, refetch: () => void refetch() }
+  // USDC has six on-chain decimals; show the wallet balance to two decimal places.
+  // Round at the cent boundary using bigint arithmetic to avoid floating-point precision loss.
+  const cents = (data + 5_000n) / 10_000n
+  const whole = (cents / 100n).toLocaleString('en-US')
+  const fraction = (cents % 100n).toString().padStart(2, '0')
+  return { state: 'ready', formatted: `${whole}.${fraction}`, refetch: () => void refetch() }
 }
