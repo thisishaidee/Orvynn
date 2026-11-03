@@ -3,11 +3,19 @@ import { agentPayAbi } from "../../../../agent/src/agentpay-abi.js";
 import { assertLeasePaymentAllowed } from "../../../../agent/src/lease-payment-guards.js";
 import { validatePaymentInput } from "../../../../agent/src/payment-validation.js";
 
+interface D1Database {
+  prepare(query: string): {
+    bind(...values: unknown[]): {
+      run(): Promise<{ meta?: { changes?: number } }>;
+    };
+  };
+}
 interface Env {
   AGENT_API_TOKEN?: string;
   ARC_RPC_URL?: string;
   AGENTPAY_ADDRESS?: string;
   USDC_ADDRESS?: string;
+  AGENT_REQUESTS_DB?: D1Database;
 }
 const DEFAULT_AGENTPAY = "0xA549B60313A86288d46323e5723AAa4c0fAA6363";
 const DEFAULT_USDC = "0x3600000000000000000000000000000000000000";
@@ -72,6 +80,7 @@ export const onRequestGet = async () => {
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   if (!env.AGENT_API_TOKEN) return json({ error: "Agent API is not configured. Set AGENT_API_TOKEN as a Pages secret." }, 503);
   if (request.headers.get("authorization") !== `Bearer ${env.AGENT_API_TOKEN}`) return json({ error: "Missing or invalid API token." }, 401);
+  if (!env.AGENT_REQUESTS_DB) return json({ error: "Agent request inbox storage is not configured." }, 503);
 
   let input: ReturnType<typeof parseBody>;
   try { input = parseBody(await readBody(request)); }
@@ -103,8 +112,33 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     });
     await client.simulateContract({ account: payment.delegate, address: contract, abi: agentPayAbi, functionName: "spend", args: [payment.leaseId, payment.recipient, payment.amount] });
 
+    const now = Math.floor(Date.now() / 1000);
+    const requestId = crypto.randomUUID();
+    const expiresAt = now + 15 * 60;
+    try {
+      await env.AGENT_REQUESTS_DB.prepare(
+        "INSERT INTO agent_payment_requests (id, lease_id, delegate_address, recipient_address, amount_base_units, amount_usdc, purpose, chain_id, agentpay_address, status, created_at, expires_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 5042, ?, 'pending', ?, ?, ?)"
+      ).bind(
+        requestId,
+        payment.leaseId.toString(),
+        payment.delegate.toLowerCase(),
+        payment.recipient.toLowerCase(),
+        payment.amount.toString(),
+        payment.amountUsdc,
+        input.purpose,
+        contract,
+        now,
+        expiresAt,
+        now
+      ).run();
+    } catch {
+      return json({ error: "Payment passed validation but could not be saved to the delegate inbox. No transaction was submitted." }, 503);
+    }
+
     return json({
       status: "ready_for_delegate_approval",
+      requestId,
+      requestExpiresAt: expiresAt,
       purpose: input.purpose,
       payment: {
         leaseId: payment.leaseId.toString(), delegate: payment.delegate, recipient: payment.recipient,
