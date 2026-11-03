@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useAccount, useWalletClient } from 'wagmi'
 import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
 import { Button, Card, CardHeader, Field, Input, Modal, Notice, Select, StatusBadge } from '@/components/ui'
@@ -9,6 +10,8 @@ import { AgentRequestInbox, type AgentPaymentRequest } from '@/components/agentp
 type RequestStage = 'details' | 'review'
 
 export function DelegateSpendPanel() {
+  const { address } = useAccount()
+  const { data: walletClient } = useWalletClient()
   const source = useDelegateLeases()
   const tx = useAgentPayTransactions()
   const activeLeases = useMemo(() => source.items.filter((lease) => leaseStatus(lease) === 'active'), [source.items])
@@ -54,19 +57,40 @@ export function DelegateSpendPanel() {
     setOpen(true)
   }
 
+  const completeAgentRequest = async (requestId: string, transactionHash: string) => {
+    if (!address || !walletClient || walletClient.account?.address.toLowerCase() !== address.toLowerCase()) {
+      throw new Error('Reconnect the delegate wallet before updating this request status.')
+    }
+    const challengeResponse = await fetch('/api/agent/delegate-auth/challenge', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ wallet: address }),
+    })
+    const challenge = await challengeResponse.json() as {
+      wallet?: string; nonce?: string; message?: string; error?: string
+    }
+    if (!challengeResponse.ok || !challenge.nonce || !challenge.message ||
+        challenge.wallet?.toLowerCase() !== address.toLowerCase()) {
+      throw new Error(challenge.error || 'Could not authenticate the delegate wallet.')
+    }
+    const signature = await walletClient.signMessage({ account: address, message: challenge.message })
+    const response = await fetch('/api/agent/payment-requests/complete', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ requestId, transactionHash, wallet: address, nonce: challenge.nonce, signature }),
+    })
+    const body = await response.json() as { error?: string }
+    if (!response.ok) throw new Error(body.error || 'Could not synchronize the confirmed payment request.')
+  }
+
   const retryRequestStatusSync = async () => {
     if (!selectedRequestId || !confirmedHash) return
     setBusy(true)
     setError('')
     try {
-      const response = await fetch('/api/agent/payment-requests/complete', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        cache: 'no-store',
-        body: JSON.stringify({ requestId: selectedRequestId, transactionHash: confirmedHash }),
-      })
-      const body = await response.json() as { error?: string }
-      if (!response.ok) throw new Error(body.error || 'Could not synchronize the confirmed payment request.')
+      await completeAgentRequest(selectedRequestId, confirmedHash)
       toast.success('Agent request marked as confirmed')
       resetRequest()
     } catch (cause) {
@@ -108,16 +132,11 @@ export function DelegateSpendPanel() {
       confirmedTransactionHash = result.hash
 
       if (selectedRequestId) {
-        const response = await fetch('/api/agent/payment-requests/complete', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          cache: 'no-store',
-          body: JSON.stringify({ requestId: selectedRequestId, transactionHash: result.hash }),
-        })
-        const body = await response.json() as { error?: string }
-        if (!response.ok) {
+        try {
+          await completeAgentRequest(selectedRequestId, result.hash)
+        } catch (cause) {
           setConfirmedHash(result.hash)
-          throw new Error(body.error || 'The payment is confirmed on Arc, but its inbox status could not be updated. Do not submit it again; retry the status update.')
+          throw new Error(cause instanceof Error ? cause.message : 'The payment is confirmed on Arc, but its inbox status could not be updated. Do not submit it again; retry the status update.')
         }
       }
 
@@ -169,11 +188,11 @@ export function DelegateSpendPanel() {
           )}
           <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
             <p className="text-overline uppercase text-ink-soft">How the approval works</p>
-            <ol className="mt-2 grid gap-2 text-support text-ink sm:grid-cols-3">
-              <li><span className="font-semibold text-brand-blue">01</span> Agent submits a request</li>
-              <li><span className="font-semibold text-brand-blue">02</span> Orvynn checks the live lease</li>
-              <li><span className="font-semibold text-brand-blue">03</span> Delegate approves in wallet</li>
-            </ol>
+            <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
+              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Agent submits a request</span></li>
+              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Orvynn checks the live lease</span></li>
+              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
+            </ul>
           </div>
           <AgentRequestInbox onSelect={selectAgentRequest} />
           <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
