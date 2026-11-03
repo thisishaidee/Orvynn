@@ -57,7 +57,7 @@ describe('event pagination completeness', () => {
   test('throws instead of returning partial logs when the chunk limit is hit', async () => {
     let calls = 0
     const client = {
-      getBlockNumber: async () => 100_000_000n,
+      getBlockNumber: async () => 500_050_000n,
       getLogs: async () => {
         calls += 1
         return []
@@ -69,7 +69,7 @@ describe('event pagination completeness', () => {
       event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow(/Incomplete event history/)
-    expect(calls).toBe(10_000)
+    expect(calls).toBe(0)
   })
 })
 
