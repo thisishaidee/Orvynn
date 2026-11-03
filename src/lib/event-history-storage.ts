@@ -38,7 +38,7 @@ function isCheckpoint(value: unknown): value is EventHistoryCheckpoint {
     typeof item.contract === 'string' &&
     typeof item.wallet === 'string' &&
     (item.scope === 'owner-leases' || item.scope === 'delegate-leases' || item.scope === 'activity') &&
-    typeof item.throughBlock === 'string' && /^\\d+$/.test(item.throughBlock) &&
+    typeof item.throughBlock === 'string' && /^\d+$/.test(item.throughBlock) &&
     typeof item.blockHash === 'string' && /^0x[0-9a-f]{64}$/i.test(item.blockHash)
 }
 
