@@ -15,10 +15,17 @@ import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
 import { getActivityLogsChunked, getLogsChunked } from '@/lib/agentpay-logs'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
-// Verified Arc Mainnet deployment block for the live AgentPay contract.
-// Testnet deployments, if configured later, must supply their own start block.
+// Verified deployment blocks keep event discovery scoped to this contract's lifetime.
+// Arc Mainnet AgentPay deployment: block 28,888,842.
+// Arc Testnet AgentPay deployment: block 70,433,685 (tx 0xe16ef5ea...).
 const MAINNET_DEPLOYMENT_BLOCK = 28_888_842n
-const eventStartBlock = (chainId: number) => chainId === 5042 ? MAINNET_DEPLOYMENT_BLOCK : 0n
+const TESTNET_DEPLOYMENT_BLOCK = 70_433_685n
+
+export function getAgentPayEventStartBlock(chainId: number): bigint {
+  if (chainId === 5042) return MAINNET_DEPLOYMENT_BLOCK
+  if (chainId === 5042002) return TESTNET_DEPLOYMENT_BLOCK
+  return 0n
+}
 
 export type ReadGate =
   | { ok: false; state: 'disconnected' | 'unsupported-network' | 'missing-address'; reason: string }
@@ -196,7 +203,7 @@ export function useDelegateLeases(): DataSource<Lease> {
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, eventStartBlock(gate.chainId), false)
+      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, getAgentPayEventStartBlock(gate.chainId), false)
     },
   })
 
@@ -259,7 +266,7 @@ export function useOwnerLeases(): DataSource<Lease> {
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, eventStartBlock(gate.chainId))
+      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
@@ -353,7 +360,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, leases, eventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, leases, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
