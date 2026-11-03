@@ -161,6 +161,9 @@ export function DelegateSpendPanel() {
         title="Agent payment requests"
         description="Review a payment request from an agent. Orvynn checks the assigned lease, then your delegate wallet must explicitly approve the transaction."
       />
+      <div className="mb-4">
+        <AgentRequestInbox onSelect={selectAgentRequest} />
+      </div>
       {source.state !== 'ready' ? (
         <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
           {source.reason}
@@ -194,7 +197,6 @@ export function DelegateSpendPanel() {
               <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
             </ul>
           </div>
-          <AgentRequestInbox onSelect={selectAgentRequest} />
           <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
           <Field label="Assigned lease">
             {(props) => <Select {...props} value={selected?.id ?? ''} onChange={(event) => setLeaseId(event.target.value)}>
