@@ -179,8 +179,18 @@ const SENSITIVE_RPC_METHODS = new Set([
 
 const SENSITIVE_KEYS = /(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)/i;
 
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/(bearer\s+)[a-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+    .replace(/(["']?(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)["']?\s*[:=]\s*["']?)[^"'\s,;}]+/gi, '$1[REDACTED]');
+}
+
 function redactSensitive(value: unknown, key = ''): unknown {
   if (SENSITIVE_KEYS.test(key)) return '[REDACTED]';
+  if (typeof value === 'string') {
+    try { return redactSensitive(JSON.parse(value)); }
+    catch { return redactSensitiveText(value); }
+  }
   if (Array.isArray(value)) return value.map((item) => redactSensitive(item));
   if (value && typeof value === 'object') {
     const clean: Record<string, unknown> = {};
@@ -199,9 +209,10 @@ function emit(event: TraceEvent): void {
     if (safeEvent.kind === 'rpc' && SENSITIVE_RPC_METHODS.has(safeEvent.method)) {
       safeEvent.params = ['[REDACTED: sensitive RPC parameters]'];
       if ('result' in safeEvent) safeEvent.result = '[REDACTED: sensitive RPC result]';
-    } else if (safeEvent.kind === 'rpc' && 'result' in safeEvent) {
-      safeEvent.result = redactSensitive(safeEvent.result);
+    } else if (safeEvent.kind === 'rpc') {
       safeEvent.params = redactSensitive(safeEvent.params) as unknown[];
+      if ('result' in safeEvent) safeEvent.result = redactSensitive(safeEvent.result);
+      if ('error' in safeEvent && safeEvent.error) safeEvent.error = redactSensitiveText(safeEvent.error);
     } else if (safeEvent.kind === 'http') {
       safeEvent.requestBody = redactSensitive(safeEvent.requestBody);
       safeEvent.responseBody = redactSensitive(safeEvent.responseBody);
