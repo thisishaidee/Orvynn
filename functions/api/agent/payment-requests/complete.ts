@@ -48,7 +48,22 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address indexed recipient, uint256 amount)"]);\n\ntype CompletionClient = {\n  getChainId(): Promise<number>;\n  getTransaction(args: { hash: Hash }): Promise<{ from: string; to: string | null; value: bigint; input: Hex }>;\n  getTransactionReceipt(args: { hash: Hash }): Promise<{\n    status: "success" | "reverted"; blockNumber: bigint;\n    logs: Array<{ address: string; topics: readonly Hex[]; data: Hex }>;\n  }>;\n  getBlock(args: { blockNumber: bigint }): Promise<{ timestamp: bigint }>;\n};\n\nexport const onRequestPost = async (\n  { request, env }: { request: Request; env: Env },\n  dependencies: { createClient?: (rpcUrl: string) => CompletionClient } = {}\n) => {
+const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address indexed recipient, uint256 amount)"]);
+
+type CompletionClient = {
+  getChainId(): Promise<number>;
+  getTransaction(args: { hash: Hash }): Promise<{ from: string; to: string | null; value: bigint; input: Hex }>;
+  getTransactionReceipt(args: { hash: Hash }): Promise<{
+    status: "success" | "reverted"; blockNumber: bigint;
+    logs: Array<{ address: string; topics: readonly Hex[]; data: Hex }>;
+  }>;
+  getBlock(args: { blockNumber: bigint }): Promise<{ timestamp: bigint }>;
+};
+
+export const onRequestPost = async (
+  { request, env }: { request: Request; env: Env },
+  dependencies: { createClient?: (rpcUrl: string) => CompletionClient } = {}
+) => {
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Delegate inbox storage is not configured." }, 503);
   if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
     return json({ error: "Content-Type must be application/json." }, 415);
@@ -111,7 +126,8 @@ const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address in
       `Nonce: ${nonce}`,
       `Issued At: ${new Date(challenge.created_at * 1000).toISOString()}`,
       `Expiration Time: ${new Date(challenge.expires_at * 1000).toISOString()}`,
-    ].join("\n");
+    ].join("
+");
     if (!await verifyMessage({ address: wallet, message, signature })) {
       return json({ error: "Delegate wallet signature verification failed." }, 401);
     }
@@ -141,7 +157,9 @@ const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address in
       nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
       rpcUrls: { default: { http: [rpcUrl] } },
     });
-    const client = dependencies.createClient\n      ? dependencies.createClient(rpcUrl)\n      : createPublicClient({ chain: arc, transport: http(rpcUrl) }) as unknown as CompletionClient;
+    const client = dependencies.createClient
+      ? dependencies.createClient(rpcUrl)
+      : createPublicClient({ chain: arc, transport: http(rpcUrl) }) as unknown as CompletionClient;
     if (await client.getChainId() !== 5042) return json({ error: "RPC is not connected to Arc Mainnet." }, 503);
 
     const [transaction, receipt] = await Promise.all([
