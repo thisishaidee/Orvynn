@@ -86,7 +86,7 @@ export function planEventHistoryScan(input: {
     checkpoint.scope === identity.scope &&
     (checkpoint.filterKey ?? '') === (identity.filterKey ?? '')
 
-  if (!sameIdentity) {
+  if (!sameIdentity || BigInt(checkpoint.throughBlock) > snapshotBlock) {
     return { fromBlock: deploymentBlock, toBlock: snapshotBlock, mode: 'rebuild' }
   }
 
