@@ -136,8 +136,8 @@ let _dropped = 0;
 
 function redactConsoleText(value: string): string {
   return value
-    .replace(/(bearer\\s+)[a-z0-9._~+\\/-]+=*/gi, '$1[REDACTED]')
-    .replace(/((?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature)\\s*[:=]\\s*)[^\\s,;]+/gi, '$1[REDACTED]');
+    .replace(/(bearer\s+)[a-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+    .replace(/((?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature)\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]');
 }
 
 function send(entry: ConsoleLogEntry): void {
