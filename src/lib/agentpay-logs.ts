@@ -17,10 +17,12 @@ import {
 } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 50_000n
+const INITIAL_CHUNK = 10_000n
 const MIN_CHUNK = 1n
 const MAX_RPC_REQUESTS = 10_000
-const CONCURRENCY = 4
+const CONCURRENCY = 1
+const MAX_RATE_LIMIT_RETRIES = 5
+const RATE_LIMIT_BASE_DELAY_MS = 500
 const MAX_LEASE_IDS_PER_QUERY = 100
 
 type AgentPayEvent = Extract<(typeof agentPayAbi)[number], { type: 'event' }>
@@ -56,6 +58,39 @@ type RawRpcLog = {
   blockNumber?: Hex | null
   transactionHash?: Hex | null
   logIndex?: Hex | null
+}
+
+/** Detect provider throttling separately from eth_getLogs range/response limits. */
+export function isRateLimitError(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  const parts: string[] = []
+  const pending: unknown[] = [error]
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === null || current === undefined || seen.has(current)) continue
+    if (typeof current === 'string') {
+      parts.push(current)
+      continue
+    }
+    if (typeof current !== 'object') continue
+    seen.add(current)
+
+    const value = current as Record<string, unknown>
+    for (const key of ['message', 'shortMessage', 'details', 'code', 'status', 'statusCode']) {
+      const item = value[key]
+      if (typeof item === 'string' || typeof item === 'number') parts.push(String(item))
+    }
+    for (const key of ['cause', 'error', 'data']) {
+      if (value[key] && typeof value[key] === 'object') pending.push(value[key])
+    }
+  }
+
+  return /rate limit|too many requests|\\b429\\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 /**
@@ -125,23 +160,38 @@ async function fetchChunkedRanges<T>(
     }
     requests += 1
 
-    try {
-      return await fetchRange(from, to)
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error)
-      if (!isRangeLimitError(error)) {
-        throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
-      }
-      if (to - from + 1n <= MIN_CHUNK) {
-        throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
-      }
+    let rateLimitRetries = 0
+    while (true) {
+      try {
+        return await fetchRange(from, to)
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error)
 
-      const midpoint = from + (to - from) / 2n
-      // Retry rejected ranges sequentially to avoid increasing pressure on an
-      // RPC endpoint that has already rejected the larger request.
-      const left = await fetchAdaptive(from, midpoint)
-      const right = await fetchAdaptive(midpoint + 1n, to)
-      return [...left, ...right]
+        // Retry throttled requests at the SAME range with exponential backoff.
+        // Do not split them: splitting would multiply traffic against a rate-limited RPC.
+        if (isRateLimitError(error)) {
+          if (rateLimitRetries >= MAX_RATE_LIMIT_RETRIES) {
+            throw new Error(`Arc RPC rate limit persisted after ${MAX_RATE_LIMIT_RETRIES} retries at blocks ${from}-${to}. ${detail}`)
+          }
+          const delay = Math.min(RATE_LIMIT_BASE_DELAY_MS * (2 ** rateLimitRetries), 8_000)
+          rateLimitRetries += 1
+          await wait(delay)
+          continue
+        }
+
+        if (!isRangeLimitError(error)) {
+          throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
+        }
+        if (to - from + 1n <= MIN_CHUNK) {
+          throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
+        }
+
+        const midpoint = from + (to - from) / 2n
+        // Split only explicit range/result-size failures, sequentially.
+        const left = await fetchAdaptive(from, midpoint)
+        const right = await fetchAdaptive(midpoint + 1n, to)
+        return [...left, ...right]
+      }
     }
   }
 
