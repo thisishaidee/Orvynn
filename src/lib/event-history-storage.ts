@@ -3,7 +3,7 @@ import {
   serializeEventHistory,
   type EventHistoryCheckpoint,
   type EventHistoryIdentity,
-} from '@/lib/event-history-cache'
+} from './event-history-cache'
 
 export interface EventHistoryStorage {
   getItem(key: string): string | null
