@@ -6,10 +6,12 @@ on:
       - agent/minimal-arc-agent
     paths:
       - "agent/**"
+      - "functions/api/agent/**"
       - ".github/workflows/agent-check.yml"
   pull_request:
     paths:
       - "agent/**"
+      - "functions/api/agent/**"
       - ".github/workflows/agent-check.yml"
 
 jobs:
@@ -25,9 +27,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install dependencies
+      - name: Install root dependencies (Pages handler imports)
+        run: npm install --prefix .. --ignore-scripts --no-audit --no-fund
+      - name: Install agent dependencies
         run: npm install
       - name: TypeScript check
         run: npm run typecheck
       - name: Verify Arc and deployed contracts (read-only)
         run: npm run check
+      - name: Verify production API rejects unauthenticated requests
+        env:
+          API_URL: https://orvynn.pages.dev/api/agent/payment-requests/prepare
+        run: |
+          set -euo pipefail
+          unauth_status=$(curl --silent --show-error --output /tmp/orvynn-unauth.json --write-out "%{http_code}" --request POST "$API_URL" --header "content-type: application/json" --data '{}')
+          echo "Unauthenticated response: HTTP $unauth_status"
+          test "$unauth_status" = "401"
+          invalid_status=$(curl --silent --show-error --output /tmp/orvynn-invalid.json --write-out "%{http_code}" --request POST "$API_URL" --header "content-type: application/json" --header "authorization: Bearer invalid-ci-probe-token" --data '{}')
+          echo "Invalid-token response: HTTP $invalid_status"
+          test "$invalid_status" = "401"
