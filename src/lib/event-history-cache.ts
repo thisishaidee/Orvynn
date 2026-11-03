@@ -177,7 +177,7 @@ export function parseEventHistory<T>(raw: string): T[] | undefined {
         typeof value === 'object' &&
         !Array.isArray(value) &&
         typeof value.__orvynnBigInt === 'string' &&
-        /^-?\\d+$/.test(value.__orvynnBigInt)
+        /^-?\d+$/.test(value.__orvynnBigInt)
       ) {
         return BigInt(value.__orvynnBigInt)
       }
