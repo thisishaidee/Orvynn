@@ -1,9 +1,9 @@
 import { Ban, Gauge, ListChecks, type LucideIcon } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { Badge, Button, Card, CardHeader, PageHeader, StatCard } from '@/components/ui'
+import { Badge, Button, Card, CardHeader, Notice, PageHeader, StatCard } from '@/components/ui'
 import { InfoList, InfoRow } from '@/components/agentpay/Notices'
 import { BRAND } from '@/lib/brand'
-import { useNetworkInfo } from '@/lib/wallet'
+import { useNetworkInfo, useUsdcBalance } from '@/lib/wallet'
 import { getAgentPayAddress } from '@/lib/agentpay-address'
 import type { PageId } from '@/lib/route'
 import { useLeases, leaseStatus } from '@/lib/agentpay'
@@ -20,6 +20,7 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
   const { isConnected } = useAccount()
   const leases = useLeases()
   const activity = useActivity()
+  const balance = useUsdcBalance()
   const activeLeaseCount = leases.state === 'ready' ? leases.items.filter((lease) => leaseStatus(lease) === 'active').length : undefined
   const network = useNetworkInfo()
   const contractAddress = getAgentPayAddress(network.chainId)
@@ -37,11 +38,27 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
         </p>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} hint="Permissions created from this wallet" />
-        <StatCard label="Active leases" value={activeLeaseCount} hint="Currently within their rules" />
-        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} hint="Events read from the contract" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="USDC balance"
+          value={balance.state === 'ready' ? balance.formatted : undefined}
+          unit="USDC"
+          loading={balance.state === 'loading'}
+          hint={balance.state === 'unsupported-network' ? 'Switch to Arc to read your balance.' : balance.state === 'error' ? 'Balance could not be loaded.' : 'Wallet balance on the connected Arc network.'}
+        />
+        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} loading={leases.state === 'loading'} hint="Permissions created from this wallet" />
+        <StatCard label="Active leases" value={activeLeaseCount} loading={leases.state === 'loading'} hint="Currently within their rules" />
+        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} loading={activity.state === 'loading'} hint="Events read from the contract" />
       </div>
+      {(balance.state === 'error' || leases.state === 'error' || activity.state === 'error') && (
+        <Notice tone="danger" title="Some information could not be loaded">
+          <div className="space-y-1 text-support">
+            {balance.state === 'error' && <p>USDC balance: read failed. <button className="underline" onClick={balance.refetch}>Try again</button></p>}
+            {leases.state === 'error' && <p>Leases: {leases.reason} <button className="ml-2 underline" onClick={leases.refetch}>Try again</button></p>}
+            {activity.state === 'error' && <p>Activity: {activity.reason} <button className="ml-2 underline" onClick={activity.refetch}>Try again</button></p>}
+          </div>
+        </Notice>
+      )}
 
       <ul className="grid gap-4 md:grid-cols-3">
         {FEATURES.map(({ icon: Icon, title, text }) => (

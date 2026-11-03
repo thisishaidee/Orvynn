@@ -81,6 +81,12 @@ export interface DataSource<T> {
   items: T[]
   /** Plain-language explanation shown when `state` is not `ready`. */
   reason: string
+  /** True when cached data is visible while the authoritative source refreshes. */
+  refreshing?: boolean
+  /** A background refresh failed while an older local snapshot remains visible. */
+  refreshError?: string
+  /** Retry the underlying read without navigating away from the current section. */
+  refetch?: () => void
 }
 
 export { useOwnerLeases as useLeases, useOwnerActivityQuery as useActivity, useDelegateLeases } from '@/lib/agentpay-reads'

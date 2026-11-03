@@ -76,12 +76,27 @@ export function DelegateSpendPanel() {
         <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
           {source.reason}
         </Notice>
+      ) : source.refreshing && activeLeases.length === 0 ? (
+        <Notice tone="info" title="Checking assigned leases on Arc">
+          Your previous lease snapshot is empty. Orvynn is checking the live network before confirming that no active leases are assigned.
+        </Notice>
       ) : activeLeases.length === 0 ? (
         <Notice tone="info" title="No active leases assigned">
           This connected wallet is not currently the delegate on an active lease. Ask the lease owner to create or fund a lease for this wallet.
         </Notice>
       ) : (
         <div className="space-y-4">
+          {source.refreshing && (
+            <Notice tone="info" title="Refreshing lease data">
+              Showing your last saved lease snapshot while Orvynn verifies the current limits on Arc. Payment approval stays disabled until this refresh finishes.
+            </Notice>
+          )}
+          {source.refreshError && (
+            <Notice tone="warning" title="Live lease check failed">
+              Your saved snapshot is shown for reference only. Payment requests are disabled until Arc responds successfully. {source.refreshError}
+              <span className="mt-2 block"><Button size="sm" variant="secondary" onClick={() => source.refetch?.()}>Retry live check</Button></span>
+            </Notice>
+          )}
           <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
             <p className="text-overline uppercase text-ink-soft">How the approval works</p>
             <ol className="mt-2 grid gap-2 text-support text-ink sm:grid-cols-3">
@@ -102,7 +117,7 @@ export function DelegateSpendPanel() {
               <strong className="num text-label">{formatUsdc(available)} USDC</strong>
             </div>
           )}
-          <Button disabled={tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
+          <Button disabled={source.refreshing || Boolean(source.refreshError) || tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
             Create payment request
           </Button>
         </div>

@@ -34,8 +34,4 @@ export default defineConfig({
       'vite-plugin-node-polyfills/shims/process',
     ],
   },
-  server: {
-    allowedHosts: true,
-    cors: true,
-  },
 })

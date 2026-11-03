@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { createPublicClient, defineChain, http, getAddress } from "viem";
 
 const rpcUrl = process.env.ARC_RPC_URL ?? "https://rpc.mainnet.arc.io";

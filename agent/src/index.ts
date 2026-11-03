@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { publicClient, agentPayAddress, usdcAddress } from "./chain.js";
 import { agentPayAbi, erc20ReadAbi } from "./agentpay-abi.js";
 

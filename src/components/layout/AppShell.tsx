@@ -99,7 +99,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
   return (
     <div className="min-h-dvh">
       <a href="#main" className="sr-only z-50 rounded-control bg-brand-navy px-4 py-2 text-label text-white focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[var(--ap-sidebar-rail)] bg-brand-navy bg-navy-gradient text-white md:block lg:w-[var(--ap-sidebar-wide)] xl:w-[var(--ap-sidebar-wider)]">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden h-dvh min-h-dvh w-[var(--ap-sidebar-rail)] bg-brand-navy bg-navy-gradient text-white md:block lg:w-[var(--ap-sidebar-wide)] xl:w-[var(--ap-sidebar-wider)]">
         <div className="flex h-full flex-col">
           <div className="flex h-16 shrink-0 items-center justify-center px-2 lg:justify-start lg:px-5">
             <BrandMark showName={false} className="text-white lg:hidden" /><BrandMark className="hidden text-white lg:flex" />

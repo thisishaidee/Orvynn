@@ -42,7 +42,7 @@ const LEVELS: ConsoleLevel[] = ['log', 'info', 'warn', 'error', 'debug'];
 // Parent origin resolution (mirrors tracing.ts)
 // ---------------------------------------------------------------------------
 
-const _parentOrigin: string = (() => {
+const _parentOrigin: string | null = (() => {
   try {
     if (window.location.ancestorOrigins?.length) {
       return window.location.ancestorOrigins[0];
@@ -59,7 +59,7 @@ const _parentOrigin: string = (() => {
     /* malformed referrer */
   }
 
-  return '*';
+  return null;
 })();
 
 // ---------------------------------------------------------------------------
@@ -134,9 +134,28 @@ let _windowStart = Date.now();
 let _windowCount = 0;
 let _dropped = 0;
 
-function send(entry: ConsoleLogEntry): void {
+function redactConsoleText(value: string): string {
+  let output = value;
   try {
-    window.parent.postMessage({ type: MESSAGE_TYPE, entry }, _parentOrigin);
+    output = JSON.stringify(JSON.parse(value), (key, item) => {
+      if (/(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)/i.test(key)) return '[REDACTED]';
+      return item;
+    });
+  } catch {
+    // Non-JSON console output is handled by conservative text redaction below.
+  }
+  return output
+    .replace(/(bearer\s+)[a-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
+    .replace(/(["']?(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)["']?\s*[:=]\s*["']?)[^"'\s,;}]+/gi, '$1[REDACTED]');
+}
+
+function send(entry: ConsoleLogEntry): void {
+  if (!_parentOrigin || window.parent === window) return;
+  try {
+    window.parent.postMessage({
+      type: MESSAGE_TYPE,
+      entry: { ...entry, message: redactConsoleText(entry.message), stack: entry.stack ? redactConsoleText(entry.stack) : undefined },
+    }, _parentOrigin);
   } catch {
     /* ignore — postMessage can throw on cross-origin edge cases */
   }
