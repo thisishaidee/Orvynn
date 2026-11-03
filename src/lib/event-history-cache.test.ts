@@ -16,7 +16,7 @@ const identity = {
   chainId: 5042,
   contract: '0xABCDEF',
   wallet: '0x123456',
-  scope: 'owner-leases' as const,
+  scope: 'owner-lease-created' as const,
 }
 const hashA = `0x${'a'.repeat(64)}`
 const hashB = `0x${'b'.repeat(64)}`
@@ -25,7 +25,7 @@ const checkpoint: EventHistoryCheckpoint = {
   chainId: 5042,
   contract: '0xabcdef',
   wallet: '0x123456',
-  scope: 'owner-leases',
+  scope: 'owner-lease-created',
   throughBlock: '1000',
   blockHash: hashA,
 }
@@ -34,10 +34,10 @@ describe('event history cache primitives', () => {
   it('scopes cache keys by chain, contract and wallet, case-insensitively', () => {
     assert.equal(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, contract: '0xabcdef', wallet: '0x123456' }))
     assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, chainId: 5042002 }))
-    assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, scope: 'delegate-leases' }))
+    assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, scope: 'delegate-lease-created' }))
   })
 
-  it('keeps owner, delegate and activity checkpoints separate', () => {
+  it('keeps distinct event streams and activity filters get separate checkpoints', () => {
     assert.equal(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity: { ...identity, scope: 'activity' }, observedCheckpointBlockHash: hashA }).mode, 'rebuild')
   })
 
