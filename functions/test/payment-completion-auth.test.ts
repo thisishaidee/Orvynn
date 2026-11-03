@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { privateKeyToAccount } from "viem/accounts";
+import { encodeAbiParameters, encodeEventTopics, encodeFunctionData, parseAbi } from "viem";
+import { agentPayAbi } from "../../agent/src/agentpay-abi.js";
 import { onRequestPost } from "../api/agent/payment-requests/complete.js";
 
 const delegate = privateKeyToAccount("0x0000000000000000000000000000000000000000000000000000000000000001");
@@ -10,6 +12,7 @@ const requestId = "11111111-1111-4111-8111-111111111111";
 const transactionHash = `0x${"a".repeat(64)}`;
 const now = Math.floor(Date.now() / 1000);
 const nonce = "ab".repeat(32);
+const spentAbi = parseAbi(["event Spent(uint256 indexed leaseId, address indexed recipient, uint256 amount)"]);
 const payment = {
   id: requestId, lease_id: "7", delegate_address: delegate.address.toLowerCase(),
   recipient_address: "0x3333333333333333333333333333333333333333",
@@ -142,4 +145,107 @@ test("does not confirm a request that is no longer pending", async () => {
     request: makeRequest({ signature }), env: env(db)
   });
   assert.equal(response.status, 409);
+});
+
+
+function mockCompletionClient(options: {
+  from?: string; to?: string | null; value?: bigint; input?: string;
+  status?: "success" | "reverted"; blockTimestamp?: bigint; chainId?: number;
+  logs?: Array<{ address: string; topics: readonly string[]; data: string }>;
+} = {}) {
+  const input = options.input ?? encodeFunctionData({
+    abi: agentPayAbi, functionName: "spend",
+    args: [7n, payment.recipient_address as \`0x\${string}\`, 1_250_000n]
+  });
+  const topics = encodeEventTopics({
+    abi: spentAbi, eventName: "Spent",
+    args: { leaseId: 7n, recipient: payment.recipient_address as \`0x\${string}\` }
+  });
+  const correctLog = {
+    address: payment.agentpay_address, topics,
+    data: encodeAbiParameters([{ type: "uint256" }], [1_250_000n])
+  };
+  return {
+    getChainId: async () => options.chainId ?? 5042,
+    getTransaction: async () => ({
+      from: options.from ?? delegate.address,
+      to: options.to === undefined ? payment.agentpay_address : options.to,
+      value: options.value ?? 0n, input
+    }),
+    getTransactionReceipt: async () => ({
+      status: options.status ?? "success", blockNumber: 100n,
+      logs: options.logs ?? [correctLog]
+    }),
+    getBlock: async () => ({ timestamp: options.blockTimestamp ?? BigInt(now) })
+  };
+}
+
+async function completeWith(options: Parameters<typeof mockCompletionClient>[0] = {}) {
+  const { db } = mockDb({ challengeWallet: delegate.address });
+  const signature = await signedProof();
+  const response = await onRequestPost({
+    request: makeRequest({ signature }), env: env(db)
+  }, { createClient: () => mockCompletionClient(options) });
+  return { response, body: await response.json() as Record<string, unknown> };
+}
+
+test("confirms only a successful Arc spend with a matching AgentPay Spent event", async () => {
+  const { response, body } = await completeWith();
+  assert.equal(response.status, 200);
+  assert.equal(body.status, "confirmed");
+  assert.equal(body.transactionHash, transactionHash);
+  assert.equal(body.blockNumber, "100");
+});
+
+test("rejects a transaction sent by an address other than the registered delegate", async () => {
+  const { response } = await completeWith({ from: other.address });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a transaction sent to a different contract", async () => {
+  const { response } = await completeWith({ to: other.address });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a transaction that transfers native value", async () => {
+  const { response } = await completeWith({ value: 1n });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a reverted transaction", async () => {
+  const { response } = await completeWith({ status: "reverted" });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a spend with a different recipient or amount", async () => {
+  const wrongInput = encodeFunctionData({
+    abi: agentPayAbi, functionName: "spend",
+    args: [7n, other.address, 1_250_000n]
+  });
+  const { response } = await completeWith({ input: wrongInput });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a successful receipt without the matching AgentPay Spent event", async () => {
+  const { response } = await completeWith({ logs: [] });
+  assert.equal(response.status, 422);
+});
+
+test("rejects a matching-looking event emitted by a different contract", async () => {
+  const client = mockCompletionClient();
+  const receipt = await client.getTransactionReceipt();
+  const { response } = await completeWith({
+    logs: [{ ...receipt.logs[0], address: other.address }]
+  });
+  assert.equal(response.status, 422);
+});
+
+test("rejects transactions mined after the payment request expiry", async () => {
+  const { response } = await completeWith({ blockTimestamp: BigInt(payment.expires_at + 1) });
+  assert.equal(response.status, 409);
+});
+
+test("fails closed when the supplied RPC is not Arc Mainnet", async () => {
+  const { response } = await completeWith({ chainId: 1 });
+  assert.equal(response.status, 503);
 });
