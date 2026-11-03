@@ -17,10 +17,12 @@ import {
 } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 50_000n
+const INITIAL_CHUNK = 5_000n
 const MIN_CHUNK = 1n
 const MAX_RPC_REQUESTS = 10_000
-const CONCURRENCY = 4
+const CONCURRENCY = 1
+const MAX_RATE_LIMIT_RETRIES = 4
+const RATE_LIMIT_RETRY_BASE_MS = 750
 const MAX_LEASE_IDS_PER_QUERY = 100
 
 type AgentPayEvent = Extract<(typeof agentPayAbi)[number], { type: 'event' }>
@@ -98,6 +100,34 @@ export function isRangeLimitError(error: unknown): boolean {
   )
 }
 
+/** Detect provider throttling separately from query-range limits. */
+export function isRateLimitError(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  const parts: string[] = []
+  const pending: unknown[] = [error]
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === null || current === undefined || seen.has(current)) continue
+    if (typeof current === 'string') {
+      parts.push(current)
+      continue
+    }
+    if (typeof current !== 'object') continue
+    seen.add(current)
+    const value = current as Record<string, unknown>
+    for (const key of ['message', 'shortMessage', 'details', 'code', 'status', 'statusCode']) {
+      const item = value[key]
+      if (typeof item === 'string' || typeof item === 'number') parts.push(String(item))
+    }
+    for (const key of ['cause', 'error', 'data']) {
+      if (value[key] && typeof value[key] === 'object') pending.push(value[key])
+    }
+  }
+
+  return /rate limit|too many requests|429|throttl/.test(parts.join(' ').toLowerCase())
+}
+
 /** Fetch complete block ranges with one shared safety budget and stable ordering. */
 async function fetchChunkedRanges<T>(
   startBlock: bigint,
@@ -119,7 +149,7 @@ async function fetchChunkedRanges<T>(
   }
 
   let requests = 0
-  const fetchAdaptive = async (from: bigint, to: bigint): Promise<T[]> => {
+  const fetchAdaptive = async (from: bigint, to: bigint, retry = 0): Promise<T[]> => {
     if (requests >= MAX_RPC_REQUESTS) {
       throw new Error('Incomplete event history: exceeded the maximum number of RPC requests.')
     }
@@ -129,6 +159,14 @@ async function fetchChunkedRanges<T>(
       return await fetchRange(from, to)
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error)
+      if (isRateLimitError(error) && retry < MAX_RATE_LIMIT_RETRIES) {
+        // Retry the identical bounded query with exponential backoff. Do not
+        // split a throttled query: doing so creates more requests and worsens
+        // provider pressure.
+        const delayMs = RATE_LIMIT_RETRY_BASE_MS * (2 ** retry)
+        await new Promise((resolve) => setTimeout(resolve, delayMs))
+        return fetchAdaptive(from, to, retry + 1)
+      }
       if (!isRangeLimitError(error)) {
         throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
       }
