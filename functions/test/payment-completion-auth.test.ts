@@ -18,11 +18,6 @@ const payment = {
   status: "pending", expires_at: now + 600, transaction_hash: null
 };
 
-async function digest(value: string) {
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 function mockDb(options: { challengeWallet?: string; paymentRow?: typeof payment | null } = {}) {
   let challenge = options.challengeWallet ? {
     wallet_address: options.challengeWallet.toLowerCase(), created_at: now, expires_at: now + 300
@@ -67,7 +62,7 @@ async function signedProof(wallet = delegate) {
     `Nonce: ${nonce}`,
     `Issued At: ${new Date(now * 1000).toISOString()}`,
     `Expiration Time: ${new Date((now + 300) * 1000).toISOString()}`,
-  ].join("\\n");
+  ].join("\n");
   return wallet.signMessage({ message });
 }
 
