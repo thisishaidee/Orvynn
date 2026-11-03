@@ -264,6 +264,7 @@ export function useDelegateLeases(): DataSource<Lease> {
     items: query.data ?? [],
     reason: '',
     refreshing: query.isFetching,
+    refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
     refetch: () => void query.refetch(),
   }
 }
