@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { Button, Card, CardHeader, Field, Input, Modal, Notice, Select, StatusBadge } from '@/components/ui'
 import { formatUsdc, leaseStatus, remainingAllowance, shortAddress, useDelegateLeases } from '@/lib/agentpay'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { AgentRequestInbox, type AgentPaymentRequest } from '@/components/agentpay/AgentRequestInbox'
 
 type RequestStage = 'details' | 'review'
 
@@ -19,6 +20,8 @@ export function DelegateSpendPanel() {
   const [stage, setStage] = useState<RequestStage>('details')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
+  const [confirmedHash, setConfirmedHash] = useState<string | null>(null)
   const selected = activeLeases.find((lease) => lease.id === leaseId) ?? activeLeases[0]
   const units = /^\d+(\.\d{1,6})?$/.test(amount) ? parseUnits(amount || '0', 6) : 0n
   const available = selected ? remainingAllowance(selected, leaseStatus(selected)) : 0n
@@ -30,6 +33,48 @@ export function DelegateSpendPanel() {
     setAmount('')
     setPurpose('')
     setError('')
+    setSelectedRequestId(null)
+    setConfirmedHash(null)
+  }
+
+  const selectAgentRequest = (request: AgentPaymentRequest) => {
+    const lease = activeLeases.find((item) => item.id === request.leaseId)
+    if (!lease) {
+      setError(`Lease ${request.leaseId} is not currently active for this connected delegate wallet. The request cannot be approved.`)
+      return
+    }
+    setLeaseId(request.leaseId)
+    setRecipient(request.recipient)
+    setAmount(request.amountUsdc)
+    setPurpose(request.purpose ?? 'Payment requested by an external agent')
+    setSelectedRequestId(request.id)
+    setConfirmedHash(null)
+    setError('')
+    setStage('review')
+    setOpen(true)
+  }
+
+  const retryRequestStatusSync = async () => {
+    if (!selectedRequestId || !confirmedHash) return
+    setBusy(true)
+    setError('')
+    try {
+      const response = await fetch('/api/agent/payment-requests/complete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        cache: 'no-store',
+        body: JSON.stringify({ requestId: selectedRequestId, transactionHash: confirmedHash }),
+      })
+      const body = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(body.error || 'Could not synchronize the confirmed payment request.')
+      toast.success('Agent request marked as confirmed')
+      resetRequest()
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Could not synchronize the confirmed payment request.'
+      setError(message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const prepareRequest = () => {
@@ -53,16 +98,41 @@ export function DelegateSpendPanel() {
       return
     }
     setBusy(true)
+    let chainConfirmed = false
+    let confirmedTransactionHash = ''
     try {
       // spend() re-reads live Arc state, checks every lease rule and simulates
       // the exact call before asking the connected delegate wallet to sign.
       const result = await tx.spend(BigInt(selected.id), recipient.trim() as Address, units)
+      chainConfirmed = true
+      confirmedTransactionHash = result.hash
+
+      if (selectedRequestId) {
+        const response = await fetch('/api/agent/payment-requests/complete', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({ requestId: selectedRequestId, transactionHash: result.hash }),
+        })
+        const body = await response.json() as { error?: string }
+        if (!response.ok) {
+          setConfirmedHash(result.hash)
+          throw new Error(body.error || 'The payment is confirmed on Arc, but its inbox status could not be updated. Do not submit it again; retry the status update.')
+        }
+      }
+
       toast.success('Agent payment confirmed', { description: result.hash })
       resetRequest()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'The payment was not completed.'
-      setError(message)
-      toast.error('Payment not completed', { description: message })
+      if (chainConfirmed) {
+        setConfirmedHash(confirmedTransactionHash)
+        setError(message)
+        toast.warning('Payment confirmed; inbox update pending', { description: message })
+      } else {
+        setError(message)
+        toast.error('Payment not completed', { description: message })
+      }
     } finally { setBusy(false) }
   }
 
@@ -105,7 +175,8 @@ export function DelegateSpendPanel() {
               <li><span className="font-semibold text-brand-blue">03</span> Delegate approves in wallet</li>
             </ol>
           </div>
-          <p className="text-support text-ink-soft">This request composer demonstrates the delegate approval path. An external AI agent can submit the same structured request through the Orvynn Agent API.</p>
+          <AgentRequestInbox onSelect={selectAgentRequest} />
+          <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
           <Field label="Assigned lease">
             {(props) => <Select {...props} value={selected?.id ?? ''} onChange={(event) => setLeaseId(event.target.value)}>
               {activeLeases.map((lease) => <option key={lease.id} value={lease.id}>Lease {lease.id} · {formatUsdc(lease.cap)} USDC cap · owner {shortAddress(lease.owner)}</option>)}
@@ -167,15 +238,25 @@ export function DelegateSpendPanel() {
                   <strong className="num">{formatUsdc(available)} USDC</strong>
                 </div>
               </div>
-              <Notice tone="info" title="Wallet approval is still required">
-                Orvynn re-reads the lease on Arc and simulates the exact payment. Only after those checks pass will your connected delegate wallet ask you to sign. The reason is app context; the contract enforces the recipient, amount, lease and spending limits.
-              </Notice>
-              {error && <Notice tone="danger" title="Payment not completed">{error}</Notice>}
+              {confirmedHash ? (
+                <Notice tone="warning" title="Payment confirmed; request update pending">
+                  The transaction is already confirmed on Arc ({confirmedHash}). Do not approve this payment again. Retry the inbox status update below.
+                </Notice>
+              ) : (
+                <Notice tone="info" title="Wallet approval is still required">
+                  Orvynn re-reads the lease on Arc and simulates the exact payment. Only after those checks pass will your connected delegate wallet ask you to sign. The reason is app context; the contract enforces the recipient, amount, lease and spending limits.
+                </Notice>
+              )}
+              {error && <Notice tone={confirmedHash ? "warning" : "danger"} title={confirmedHash ? "Status update pending" : "Payment not completed"}>{error}</Notice>}
               <div className="flex flex-wrap justify-end gap-2 border-t border-line pt-4">
                 <Button variant="secondary" disabled={busy} onClick={() => { setError(''); setStage('details') }}>Edit request</Button>
-                <Button loading={busy} disabled={tx.state !== 'ready' || !selected || units <= 0n || units > available} onClick={() => void approveRequest()}>
-                  Approve with wallet
-                </Button>
+                {confirmedHash ? (
+                  <Button loading={busy} disabled={busy} onClick={() => void retryRequestStatusSync()}>Retry status update</Button>
+                ) : (
+                  <Button loading={busy} disabled={tx.state !== 'ready' || !selected || units <= 0n || units > available} onClick={() => void approveRequest()}>
+                    Approve with wallet
+                  </Button>
+                )}
               </div>
             </>
           )}
