@@ -155,11 +155,11 @@ function mockCompletionClient(options: {
 } = {}) {
   const input = options.input ?? encodeFunctionData({
     abi: agentPayAbi, functionName: "spend",
-    args: [7n, payment.recipient_address as \`0x\${string}\`, 1_250_000n]
+    args: [7n, payment.recipient_address as `0x${string}`, 1_250_000n]
   });
   const topics = encodeEventTopics({
     abi: spentAbi, eventName: "Spent",
-    args: { leaseId: 7n, recipient: payment.recipient_address as \`0x\${string}\` }
+    args: { leaseId: 7n, recipient: payment.recipient_address as `0x${string}` }
   });
   const correctLog = {
     address: payment.agentpay_address, topics,
