@@ -185,8 +185,8 @@ async function discoverLeases(
 
 const DELEGATE_LEASE_CACHE_VERSION = 1
 
-function delegateLeaseCacheKey(chainId: number, contract: Address, delegate: Address): string {
-  return `orvynn:delegate-leases:v${DELEGATE_LEASE_CACHE_VERSION}:${chainId}:${contract.toLowerCase()}:${delegate.toLowerCase()}`
+function leaseCacheKey(role: 'owner' | 'delegate', chainId: number, contract: Address, wallet: Address): string {
+  return `orvynn:${role}-leases:v${DELEGATE_LEASE_CACHE_VERSION}:${chainId}:${contract.toLowerCase()}:${wallet.toLowerCase()}`
 }
 
 /**
@@ -236,7 +236,7 @@ function writeDelegateLeaseCache(key: string, leases: Lease[]): void {
 /** Leases where the connected wallet is the named delegate, for agent-side spending. */
 export function useDelegateLeases(): DataSource<Lease> {
   const gate = useReadGate()
-  const cacheKey = gate.ok ? delegateLeaseCacheKey(gate.chainId, gate.contract, gate.address) : undefined
+  const cacheKey = gate.ok ? leaseCacheKey('delegate', gate.chainId, gate.contract, gate.address) : undefined
   const query = useQuery({
     queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
@@ -314,24 +314,39 @@ export function useAllowedRecipient(id: bigint | undefined, recipient: Address |
 
 export function useOwnerLeases(): DataSource<Lease> {
   const gate = useReadGate()
+  const cacheKey = gate.ok ? leaseCacheKey('owner', gate.chainId, gate.contract, gate.address) : undefined
   const query = useQuery({
     queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
+    // Render the last known lease snapshot immediately; it is never used to authorise a transaction.
+    initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
+    initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
       return discoverLeases(gate.client, gate.contract, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
+  useEffect(() => {
+    if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
+  }, [cacheKey, query.data])
+
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
-  if (query.isError) {
+  if (query.isError && !query.data) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
   }
-  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
+  return {
+    state: 'ready',
+    items: query.data ?? [],
+    reason: '',
+    refreshing: query.isFetching,
+    refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
+    refetch: () => void query.refetch(),
+  }
 }
 
 function eventAbi(name: string) {
