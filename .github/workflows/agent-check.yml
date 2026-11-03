@@ -28,7 +28,7 @@ jobs:
         with:
           node-version: 22
       - name: Install root dependencies (Pages handler imports)
-        run: npm ci --prefix ..
+        run: npm install --prefix .. --ignore-scripts --no-audit --no-fund
       - name: Install agent dependencies
         run: npm install
       - name: TypeScript check
