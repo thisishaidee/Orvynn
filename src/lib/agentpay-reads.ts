@@ -4,6 +4,7 @@
  * current state. Does not invent addresses, records, or timestamps.
  */
 
+import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { type Address, type Hex, type PublicClient } from 'viem'
 import { useAccount, usePublicClient, useReadContract } from 'wagmi'
@@ -182,25 +183,89 @@ async function discoverLeases(
   return leases.sort((a, b) => Number(b.id) - Number(a.id))
 }
 
+const DELEGATE_LEASE_CACHE_VERSION = 1
+
+function delegateLeaseCacheKey(chainId: number, contract: Address, delegate: Address): string {
+  return `orvynn:delegate-leases:v${DELEGATE_LEASE_CACHE_VERSION}:${chainId}:${contract.toLowerCase()}:${delegate.toLowerCase()}`
+}
+
+/**
+ * A local snapshot is only a rendering shortcut. The payment path always
+ * re-reads the lease from Arc and simulates the exact spend before signing.
+ */
+function readDelegateLeaseCache(key: string): Lease[] | undefined {
+  if (typeof window === 'undefined') return undefined
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return undefined
+    const parsed: unknown = JSON.parse(raw, (_key, value) => {
+      if (value && typeof value === 'object' && typeof value.__orvynnBigInt === 'string') {
+        return BigInt(value.__orvynnBigInt)
+      }
+      return value
+    })
+    if (!Array.isArray(parsed)) return undefined
+    const valid = parsed.every((lease) =>
+      lease && typeof lease === 'object' &&
+      typeof lease.id === 'string' &&
+      typeof lease.owner === 'string' &&
+      typeof lease.delegate === 'string' &&
+      typeof lease.cap === 'bigint' &&
+      typeof lease.expiry === 'number' &&
+      typeof lease.balance === 'bigint' &&
+      typeof lease.spentThisPeriod === 'bigint' &&
+      typeof lease.revoked === 'boolean'
+    )
+    return valid ? parsed as Lease[] : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function writeDelegateLeaseCache(key: string, leases: Lease[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(leases, (_key, value) =>
+      typeof value === 'bigint' ? { __orvynnBigInt: value.toString() } : value
+    ))
+  } catch {
+    // Storage may be disabled or full; on-chain reads remain authoritative.
+  }
+}
+
 /** Leases where the connected wallet is the named delegate, for agent-side spending. */
 export function useDelegateLeases(): DataSource<Lease> {
   const gate = useReadGate()
+  const cacheKey = gate.ok ? delegateLeaseCacheKey(gate.chainId, gate.contract, gate.address) : undefined
   const query = useQuery({
     queryKey: ['agentpay', 'delegate-leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
     staleTime: 15_000,
     gcTime: 5 * 60_000,
     retry: 1,
+    initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
+    // Cached snapshots render immediately but are always revalidated on Arc.
+    initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
       return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, getAgentPayEventStartBlock(gate.chainId), false)
     },
   })
 
+  useEffect(() => {
+    if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
+  }, [cacheKey, query.data])
+
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
-  if (query.isError) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
-  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
+  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
+  return {
+    state: 'ready',
+    items: query.data ?? [],
+    reason: '',
+    refreshing: query.isFetching,
+    refetch: () => void query.refetch(),
+  }
 }
 
 export function useNextLeaseId() {
