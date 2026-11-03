@@ -119,7 +119,10 @@ async function discoverLeases(client: PublicClient, contract: Address, filter: {
       name: 'AllowlistUpdated',
       inputs: agentPayAbi.find((x) => x.type === 'event' && x.name === 'AllowlistUpdated')!.inputs,
     } as never,
-    args: { leaseId: ids.length === 1 ? ids[0] : undefined },
+    // leaseId is indexed. Pass every discovered ID as an OR-filter so the RPC
+    // returns only allowlist changes belonging to this wallet's leases.
+    // Omitting the filter for multiple leases caused a full contract-wide scan.
+    args: { leaseId: ids },
     fromBlock,
   })
 
