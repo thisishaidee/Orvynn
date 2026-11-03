@@ -91,6 +91,12 @@ export function DelegateSpendPanel() {
               Showing your last saved lease snapshot while Orvynn verifies the current limits on Arc. Payment approval stays disabled until this refresh finishes.
             </Notice>
           )}
+          {source.refreshError && (
+            <Notice tone="warning" title="Live lease check failed">
+              Your saved snapshot is shown for reference only. Payment requests are disabled until Arc responds successfully. {source.refreshError}
+              <span className="mt-2 block"><Button size="sm" variant="secondary" onClick={() => source.refetch?.()}>Retry live check</Button></span>
+            </Notice>
+          )}
           <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
             <p className="text-overline uppercase text-ink-soft">How the approval works</p>
             <ol className="mt-2 grid gap-2 text-support text-ink sm:grid-cols-3">
@@ -111,7 +117,7 @@ export function DelegateSpendPanel() {
               <strong className="num text-label">{formatUsdc(available)} USDC</strong>
             </div>
           )}
-          <Button disabled={source.refreshing || tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
+          <Button disabled={source.refreshing || Boolean(source.refreshError) || tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
             Create payment request
           </Button>
         </div>
