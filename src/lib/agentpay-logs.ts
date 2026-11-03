@@ -3,7 +3,7 @@
  * Arc's public RPC can reject large eth_getLogs ranges or bursts of requests.
  * Shrink rejected ranges and never return partial history as complete.
  */
-import type { Address, PublicClient } from 'viem'
+import type { AbiEvent, Address, PublicClient } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
 const INITIAL_CHUNK = 9_000n
@@ -12,13 +12,15 @@ const MAX_CHUNKS = 10_000
 
 export type LogQuery = {
   address: Address
-  event: (typeof agentPayAbi)[number]
+  event?: (typeof agentPayAbi)[number]
+  events?: readonly AbiEvent[]
   args?: Record<string, unknown>
   fromBlock: bigint
 }
 
 export async function getLogsChunked(client: PublicClient, params: LogQuery) {
   const { fromBlock: startBlock, ...query } = params
+  if (!query.event && !query.events?.length) throw new Error('An event or event list is required for log retrieval.')
   const latest = await client.getBlockNumber()
   if (startBlock > latest) return []
 

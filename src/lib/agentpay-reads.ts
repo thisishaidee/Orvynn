@@ -252,54 +252,36 @@ function eventAbi(name: string) {
 async function discoverActivity(
   client: PublicClient,
   contract: Address,
-  owner: Address,
   leases: Lease[],
   fromBlock: bigint,
 ): Promise<ActivityItem[]> {
-  const leaseIds = leases.map((l) => BigInt(l.id))
-  const byId = new Map(leases.map((l) => [l.id, l]))
-
+  const leaseIds = leases.map((lease) => BigInt(lease.id))
+  const byId = new Map(leases.map((lease) => [lease.id, lease]))
   if (leaseIds.length === 0) return []
 
-  // Every event exposes leaseId as an indexed field. Filter at the RPC instead
-  // of downloading every event emitted by the contract and discarding most of
-  // them in the browser. Viem encodes an array as an OR filter over topic values.
-  // Keep scans sequential to avoid bursts against Arc's public RPC.
-  const leaseIdFilter = { leaseId: leaseIds }
-  const created = await getLogsChunked(client, {
-    address: contract, event: eventAbi('LeaseCreated') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const deposited = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Deposited') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const withdrawn = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Withdrawn') as never,
-    args: { owner, ...leaseIdFilter }, fromBlock,
-  })
-  const spent = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Spent') as never,
-    args: leaseIdFilter, fromBlock,
-  })
-  const revoked = await getLogsChunked(client, {
-    address: contract, event: eventAbi('Revoked') as never,
-    args: leaseIdFilter, fromBlock,
-  })
-  const allowlist = await getLogsChunked(client, {
-    address: contract, event: eventAbi('AllowlistUpdated') as never,
-    args: leaseIdFilter, fromBlock,
+  // All six contract events share an indexed leaseId field. Fetch them in one
+  // RPC log scan and filter by the connected owner's already-verified lease IDs.
+  // This replaces six sequential full-range scans with one indexed query.
+  const logs = await getLogsChunked(client, {
+    address: contract,
+    events: [
+      eventAbi('LeaseCreated'),
+      eventAbi('Deposited'),
+      eventAbi('Spent'),
+      eventAbi('Revoked'),
+      eventAbi('Withdrawn'),
+      eventAbi('AllowlistUpdated'),
+    ],
+    args: { leaseId: leaseIds },
+    fromBlock,
   })
 
-  const owned = new Set(leaseIds.map((id) => id.toString()))
-  const relevant = [...created, ...deposited, ...withdrawn, ...spent, ...revoked, ...allowlist].filter((log) => {
-    const leaseId = (log as { args?: { leaseId?: bigint } }).args?.leaseId
-    return leaseId !== undefined && owned.has(leaseId.toString())
-  })
+  const times = await blockTimestamps(
+    client,
+    logs.map((log) => log.blockNumber).filter((number): number is bigint => number !== null),
+  )
 
-  const times = await blockTimestamps(client, relevant.map((log) => log.blockNumber).filter((n): n is bigint => n !== null))
-
-  const items: ActivityItem[] = relevant.map((entry) => {
+  const items: ActivityItem[] = logs.flatMap((entry) => {
     const log = entry as {
       args?: {
         leaseId?: bigint
@@ -314,36 +296,27 @@ async function discoverActivity(
       transactionHash: Hex | null
       logIndex: number | null
     }
-    const args = (log.args ?? {}) as {
-      leaseId?: bigint
-      owner?: Address
-      delegate?: Address
-      recipient?: Address
-      amount?: bigint
-      allowed?: boolean
-    }
-    const leaseId = args.leaseId?.toString() ?? '0'
+    const args = log.args ?? {}
+    if (args.leaseId === undefined) return []
+    const leaseId = args.leaseId.toString()
     const lease = byId.get(leaseId)
+    if (!lease) return []
+
     const type = (log.eventName ?? 'LeaseCreated') as ActivityType
-    const timestamp = log.blockNumber !== null ? times.get(log.blockNumber.toString()) : undefined
-    return {
+    return [{
       id: `${log.transactionHash}-${log.logIndex}`,
       type,
       leaseId,
-      agent: activityAgent(type, args, lease?.delegate),
+      agent: activityAgent(type, args, lease.delegate),
       recipient: args.recipient,
       amount: args.amount,
-      timestamp,
+      timestamp: log.blockNumber !== null ? times.get(log.blockNumber.toString()) : undefined,
       txHash: (log.transactionHash ?? '0x') as Hex,
       status: 'success',
-    }
+    }]
   })
 
-  return items.sort((a, b) => {
-    const ta = a.timestamp ?? 0
-    const tb = b.timestamp ?? 0
-    return tb - ta
-  })
+  return items.sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
 }
 
 export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSource<ActivityItem> {
@@ -353,7 +326,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     enabled: gate.ok && leasesReady,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, gate.address, leases, eventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, leases, eventStartBlock(gate.chainId))
     },
   })
 
