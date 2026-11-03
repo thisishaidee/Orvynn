@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { onRequestPost } from "../../functions/api/agent/payment-requests/prepare";
+import { onRequestPost } from "../../functions/api/agent/payment-requests/prepare.js";
 
 const owner = "0x1111111111111111111111111111111111111111";
 const delegate = "0x2222222222222222222222222222222222222222";
