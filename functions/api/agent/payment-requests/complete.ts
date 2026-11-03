@@ -169,7 +169,19 @@ const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address in
       return json({ error: "On-chain spend details do not match this payment request." }, 422);
     }
 
-    const spentLog = receipt.logs.find((log) => {\n      if (log.address.toLowerCase() !== contract.toLowerCase()) return false;\n      try {\n        const event = decodeEventLog({ abi: spentEventAbi, data: log.data, topics: [...log.topics] });\n        return event.eventName === "Spent" &&\n          event.args.leaseId.toString() === row.lease_id &&\n          event.args.recipient.toLowerCase() === row.recipient_address.toLowerCase() &&\n          event.args.amount.toString() === row.amount_base_units;\n      } catch { return false; }\n    });\n    if (!spentLog) return json({ error: "Successful receipt does not contain the matching AgentPay spend event." }, 422);\n\n    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+    const spentLog = receipt.logs.find((log) => {
+      if (log.address.toLowerCase() !== contract.toLowerCase()) return false;
+      try {
+        const event = decodeEventLog({ abi: spentEventAbi, data: log.data, topics: [...log.topics] });
+        return event.eventName === "Spent" &&
+          event.args.leaseId.toString() === row.lease_id &&
+          event.args.recipient.toLowerCase() === row.recipient_address.toLowerCase() &&
+          event.args.amount.toString() === row.amount_base_units;
+      } catch { return false; }
+    });
+    if (!spentLog) return json({ error: "Successful receipt does not contain the matching AgentPay spend event." }, 422);
+
+    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
     if (Number(block.timestamp) > row.expires_at) {
       return json({ error: "The payment request expired before the transaction was mined." }, 409);
     }
