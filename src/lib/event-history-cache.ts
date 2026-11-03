@@ -160,3 +160,31 @@ export function advanceEventHistoryCheckpoint(input: {
     blockHash: input.blockHash.toLowerCase(),
   }
 }
+
+/** Serialize cached viem logs without losing bigint fields. */
+export function serializeEventHistory<T>(events: readonly T[]): string {
+  return JSON.stringify(events, (_key, value) =>
+    typeof value === 'bigint' ? { __orvynnBigInt: value.toString() } : value,
+  )
+}
+
+/** Parse cached logs and reject malformed or non-array payloads. */
+export function parseEventHistory<T>(raw: string): T[] | undefined {
+  try {
+    const parsed: unknown = JSON.parse(raw, (_key, value) => {
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        typeof value.__orvynnBigInt === 'string' &&
+        /^-?\\d+$/.test(value.__orvynnBigInt)
+      ) {
+        return BigInt(value.__orvynnBigInt)
+      }
+      return value
+    })
+    return Array.isArray(parsed) ? parsed as T[] : undefined
+  } catch {
+    return undefined
+  }
+}
