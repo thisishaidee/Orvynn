@@ -35,3 +35,14 @@ jobs:
         run: npm run typecheck
       - name: Verify Arc and deployed contracts (read-only)
         run: npm run check
+      - name: Verify production API rejects unauthenticated requests
+        env:
+          API_URL: https://orvynn.com/api/agent/payment-requests/prepare
+        run: |
+          set -euo pipefail
+          unauth_status=$(curl --silent --show-error --output /tmp/orvynn-unauth.json --write-out "%{http_code}" --request POST "$API_URL" --header "content-type: application/json" --data '{}')
+          echo "Unauthenticated response: HTTP $unauth_status"
+          test "$unauth_status" = "401"
+          invalid_status=$(curl --silent --show-error --output /tmp/orvynn-invalid.json --write-out "%{http_code}" --request POST "$API_URL" --header "content-type: application/json" --header "authorization: Bearer invalid-ci-probe-token" --data '{}')
+          echo "Invalid-token response: HTTP $invalid_status"
+          test "$invalid_status" = "401"
