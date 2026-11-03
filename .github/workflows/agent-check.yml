@@ -6,10 +6,12 @@ on:
       - agent/minimal-arc-agent
     paths:
       - "agent/**"
+      - "functions/api/agent/**"
       - ".github/workflows/agent-check.yml"
   pull_request:
     paths:
       - "agent/**"
+      - "functions/api/agent/**"
       - ".github/workflows/agent-check.yml"
 
 jobs:
