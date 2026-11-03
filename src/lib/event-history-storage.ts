@@ -88,6 +88,8 @@ export function readStoredEventHistory<T>(
     }
     return { checkpoint: value.checkpoint, events }
   } catch {
+    // Invalid JSON or a storage read failure must not poison every future load.
+    try { storage.removeItem(key) } catch { /* Storage may be unavailable. */ }
     return undefined
   }
 }
