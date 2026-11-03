@@ -10,6 +10,7 @@ export type EventHistoryIdentity = {
   chainId: number
   contract: string
   wallet: string
+  scope: 'owner-leases' | 'delegate-leases' | 'activity'
 }
 
 export type EventHistoryCheckpoint = {
@@ -17,6 +18,7 @@ export type EventHistoryCheckpoint = {
   chainId: number
   contract: string
   wallet: string
+  scope: 'owner-leases' | 'delegate-leases' | 'activity'
   throughBlock: string
   blockHash: string
 }
@@ -46,6 +48,7 @@ export function eventHistoryCacheKey(identity: EventHistoryIdentity): string {
     identity.chainId,
     normalizeAddress(identity.contract),
     normalizeAddress(identity.wallet),
+    identity.scope,
   ].join(':')
 }
 
@@ -76,7 +79,8 @@ export function planEventHistoryScan(input: {
     checkpoint.version === 1 &&
     checkpoint.chainId === identity.chainId &&
     normalizeAddress(checkpoint.contract) === normalizeAddress(identity.contract) &&
-    normalizeAddress(checkpoint.wallet) === normalizeAddress(identity.wallet)
+    normalizeAddress(checkpoint.wallet) === normalizeAddress(identity.wallet) &&
+    checkpoint.scope === identity.scope
 
   if (!sameIdentity) {
     return { fromBlock: deploymentBlock, toBlock: snapshotBlock, mode: 'rebuild' }
@@ -141,6 +145,7 @@ export function advanceEventHistoryCheckpoint(input: {
     input.previous.chainId === input.identity.chainId &&
     normalizeAddress(input.previous.contract) === normalizeAddress(input.identity.contract) &&
     normalizeAddress(input.previous.wallet) === normalizeAddress(input.identity.wallet) &&
+    input.previous.scope === input.identity.scope &&
     input.throughBlock < BigInt(input.previous.throughBlock)
   ) {
     throw new Error('Event-history checkpoint cannot move backwards.')
@@ -150,6 +155,7 @@ export function advanceEventHistoryCheckpoint(input: {
     chainId: input.identity.chainId,
     contract: normalizeAddress(input.identity.contract),
     wallet: normalizeAddress(input.identity.wallet),
+    scope: input.identity.scope,
     throughBlock: input.throughBlock.toString(),
     blockHash: input.blockHash.toLowerCase(),
   }
