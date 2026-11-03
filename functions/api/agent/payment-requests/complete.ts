@@ -29,6 +29,7 @@ type StoredRequest = {
   agentpay_address: string;
   status: string;
   expires_at: number;
+  transaction_hash: string | null;
 };
 
 function json(body: unknown, status = 200): Response {
@@ -70,9 +71,12 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
 
   try {
     const row = await env.AGENT_REQUESTS_DB.prepare(
-      "SELECT id, lease_id, delegate_address, recipient_address, amount_base_units, agentpay_address, status, expires_at FROM agent_payment_requests WHERE id = ?"
+      "SELECT id, lease_id, delegate_address, recipient_address, amount_base_units, agentpay_address, status, expires_at, transaction_hash FROM agent_payment_requests WHERE id = ?"
     ).bind(requestId).first<StoredRequest>();
     if (!row) return json({ error: "Payment request was not found." }, 404);
+    if (row.status === "confirmed" && row.transaction_hash?.toLowerCase() === transactionHash.toLowerCase()) {
+      return json({ status: "confirmed", requestId, transactionHash, idempotent: true });
+    }
     if (row.status !== "pending") return json({ error: "Payment request is no longer pending." }, 409);
 
     const rpcUrl = env.ARC_RPC_URL || "https://rpc.mainnet.arc.io";
