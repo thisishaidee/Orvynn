@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Address, PublicClient } from 'viem'
 import { activityAgent, currentPeriodSpent, currentWindowIndex } from '../src/lib/agentpay-accounting'
-import { getLogsChunked } from '../src/lib/agentpay-logs'
+import { getLogsChunked, isRateLimitError, isRangeLimitError } from '../src/lib/agentpay-logs'
 
 const DELEGATE = '0x1111111111111111111111111111111111111111' as Address
 const OWNER = '0x2222222222222222222222222222222222222222' as Address
@@ -87,5 +87,24 @@ describe('allowlist read failure', () => {
       event: { type: 'event', name: 'AllowlistUpdated', inputs: [] } as never,
       fromBlock: 0n,
     })).rejects.toThrow('allowlist rpc failed')
+  })
+})
+
+describe('Arc RPC error classification', () => {
+  test('recognises provider rate-limit errors without treating them as range limits', () => {
+    const error = new Error('Request exceeds defined limit. Details: rate limit exceeded')
+    expect(isRateLimitError(error)).toBe(true)
+    expect(isRangeLimitError(error)).toBe(false)
+  })
+
+  test('recognises HTTP 429 throttling responses', () => {
+    expect(isRateLimitError({ status: 429, message: 'Too many requests' })).toBe(true)
+    expect(isRangeLimitError({ status: 429, message: 'Too many requests' })).toBe(false)
+  })
+
+  test('keeps explicit block-range errors eligible for adaptive splitting', () => {
+    const error = new Error('eth_getLogs block range too large')
+    expect(isRangeLimitError(error)).toBe(true)
+    expect(isRateLimitError(error)).toBe(false)
   })
 })
