@@ -53,6 +53,7 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Delegate inbox storage is not configured." }, 503);
   const origin = configuredOrigin(env.ORVYNN_APP_ORIGIN);
   if (!origin) return json({ error: "Delegate authentication origin must be configured as a canonical HTTPS origin." }, 503);
+  if (request.headers.get("origin") !== origin) return json({ error: "Delegate authentication requests must originate from the configured Orvynn app." }, 403);
 
   let wallet: string;
   try {
