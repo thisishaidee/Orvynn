@@ -82,7 +82,7 @@ const pending: PaymentRow = {
   status: "pending", created_at: now, expires_at: now + 600
 };
 const jsonRequest = (body: unknown) => new Request("https://orvynn.xyz/api/agent/delegate-auth", {
-  method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+  method: "POST", headers: { "content-type": "application/json", origin: "https://orvynn.xyz" }, body: JSON.stringify(body)
 });
 
 test("issues a short-lived challenge and returns a message bound to the wallet and app origin", async () => {
