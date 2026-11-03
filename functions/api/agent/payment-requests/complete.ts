@@ -4,6 +4,8 @@ import {
   defineChain,
   getAddress,
   http,
+  verifyMessage,
+  type Hex,
   type Hash,
 } from "viem";
 import { agentPayAbi } from "../../../../agent/src/agentpay-abi.js";
@@ -19,6 +21,7 @@ interface D1Database {
 interface Env {
   AGENT_REQUESTS_DB?: D1Database;
   ARC_RPC_URL?: string;
+  ORVYNN_APP_ORIGIN?: string;
 }
 type StoredRequest = {
   id: string;
@@ -51,6 +54,9 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
 
   let requestId: string;
   let transactionHash: Hash;
+  let wallet: `0x${string}`;
+  let nonce: string;
+  let signature: Hex;
   try {
     const text = await request.text();
     if (text.length > 4096) return json({ error: "Request body is too large." }, 413);
@@ -63,6 +69,15 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     if (typeof value.transactionHash !== "string" || !/^0x[0-9a-f]{64}$/i.test(value.transactionHash)) {
       return json({ error: "Invalid transaction hash." }, 400);
     }
+    if (typeof value.wallet !== "string" || typeof value.nonce !== "string" || typeof value.signature !== "string") {
+      return json({ error: "Delegate wallet authentication is required." }, 401);
+    }
+    wallet = getAddress(value.wallet);
+    if (!/^[0-9a-f]{64}$/i.test(value.nonce) || !/^0x[0-9a-f]{130}$/i.test(value.signature)) {
+      return json({ error: "Invalid delegate authentication proof." }, 400);
+    }
+    nonce = value.nonce;
+    signature = value.signature as Hex;
     requestId = value.requestId;
     transactionHash = value.transactionHash as Hash;
   } catch {
@@ -70,10 +85,48 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
   }
 
   try {
+    const appOrigin = env.ORVYNN_APP_ORIGIN ? new URL(env.ORVYNN_APP_ORIGIN) : null;
+    if (!appOrigin || appOrigin.protocol !== "https:" || appOrigin.pathname !== "/" || appOrigin.search || appOrigin.hash ||
+        request.headers.get("origin") !== appOrigin.origin) {
+      return json({ error: "Completion must originate from the configured Orvynn app." }, 403);
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const nonceHashBytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(nonce));
+    const nonceHash = Array.from(new Uint8Array(nonceHashBytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const challenge = await env.AGENT_REQUESTS_DB.prepare(
+      "SELECT wallet_address, created_at, expires_at FROM delegate_auth_nonces WHERE nonce_hash = ?"
+    ).bind(nonceHash).first<{ wallet_address: string; created_at: number; expires_at: number }>();
+    if (!challenge || challenge.wallet_address.toLowerCase() !== wallet.toLowerCase() ||
+        challenge.expires_at <= now || challenge.created_at > now + 30) {
+      return json({ error: "Delegate authentication challenge is missing, expired or belongs to another wallet." }, 401);
+    }
+    const message = [
+      "Orvynn delegate payment inbox authentication",
+      "",
+      "This signature proves wallet control for one inbox request. It does not authorize or submit a payment.",
+      `Origin: ${appOrigin.origin}`,
+      `Wallet: ${wallet}`,
+      `Nonce: ${nonce}`,
+      `Issued At: ${new Date(challenge.created_at * 1000).toISOString()}`,
+      `Expiration Time: ${new Date(challenge.expires_at * 1000).toISOString()}`,
+    ].join("\\n");
+    if (!await verifyMessage({ address: wallet, message, signature })) {
+      return json({ error: "Delegate wallet signature verification failed." }, 401);
+    }
+    const consumed = await env.AGENT_REQUESTS_DB.prepare(
+      "DELETE FROM delegate_auth_nonces WHERE nonce_hash = ? AND wallet_address = ? AND expires_at > ?"
+    ).bind(nonceHash, wallet.toLowerCase(), now).run();
+    if ((consumed.meta?.changes ?? 0) !== 1) {
+      return json({ error: "Delegate authentication challenge has already been used or expired." }, 401);
+    }
+
     const row = await env.AGENT_REQUESTS_DB.prepare(
       "SELECT id, lease_id, delegate_address, recipient_address, amount_base_units, agentpay_address, status, expires_at, transaction_hash FROM agent_payment_requests WHERE id = ?"
     ).bind(requestId).first<StoredRequest>();
     if (!row) return json({ error: "Payment request was not found." }, 404);
+    if (wallet.toLowerCase() !== row.delegate_address.toLowerCase()) {
+      return json({ error: "Authenticated wallet is not the registered delegate for this request." }, 403);
+    }
     if (row.status === "confirmed" && row.transaction_hash?.toLowerCase() === transactionHash.toLowerCase()) {
       return json({ status: "confirmed", requestId, transactionHash, idempotent: true });
     }
@@ -119,7 +172,6 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
       return json({ error: "The payment request expired before the transaction was mined." }, 409);
     }
 
-    const now = Math.floor(Date.now() / 1000);
     const updated = await env.AGENT_REQUESTS_DB.prepare(
       "UPDATE agent_payment_requests SET status = 'confirmed', transaction_hash = ?, updated_at = ? WHERE id = ? AND status = 'pending' AND delegate_address = ?"
     ).bind(transactionHash, now, requestId, row.delegate_address.toLowerCase()).run();
