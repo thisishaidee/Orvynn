@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { getAgentPayEventStartBlock } from '../src/lib/agentpay-reads'
+import { getAgentPayEventStartBlock } from '../src/lib/agentpay-deployment'
 import { isRangeLimitError } from '../src/lib/agentpay-logs'
 
 describe('AgentPay event scan start blocks', () => {
