@@ -86,3 +86,100 @@ test("rejects invalid payment addresses before attempting RPC access", async () 
   assert.equal(response.status, 422);
   assert.match(String((await responseBody(response)).error), /valid wallet addresses/i);
 });
+
+
+const owner = "0x1111111111111111111111111111111111111111";
+const delegate = "0x2222222222222222222222222222222222222222";
+const recipient = "0x3333333333333333333333333333333333333333";
+const contractUsdc = "0x3600000000000000000000000000000000000000";
+
+function rpcClient(options: { allowance?: bigint; recipientAllowed?: boolean } = {}) {
+  const calls: string[] = [];
+  const client = {
+    getChainId: async () => 5042,
+    getBlock: async () => ({ timestamp: 1_800_000_000n }),
+    readContract: async ({ functionName }: { functionName: string }) => {
+      calls.push(functionName);
+      if (functionName === "leases") {
+        return [owner, delegate, 1_000_000n, 86_400n, 1_900_000_000n, 0n, 0n, 0n, 5_000_000n, false, false];
+      }
+      if (functionName === "remainingAllowance") return options.allowance ?? 2_000_000n;
+      if (functionName === "USDC") return contractUsdc;
+      if (functionName === "allowedRecipients") return options.recipientAllowed ?? false;
+      throw new Error(`Unexpected contract read: ${functionName}`);
+    },
+    simulateContract: async () => {
+      calls.push("spend");
+      return {};
+    }
+  };
+  return { client, calls };
+}
+
+function validPaymentRequest() {
+  return request(JSON.stringify({
+    leaseId: "7",
+    delegate,
+    recipient,
+    amountUsdc: "1.25",
+    purpose: "Approved supplier payment"
+  }), `Bearer ${token}`);
+}
+
+test("prepares a valid authenticated payment using mocked Arc RPC and never submits it", async () => {
+  const { client, calls } = rpcClient();
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  const body = await responseBody(response);
+  assert.equal(response.status, 200);
+  assert.equal(body.status, "ready_for_delegate_approval");
+  assert.equal(body.purpose, "Approved supplier payment");
+  assert.deepEqual(body.payment, {
+    leaseId: "7",
+    delegate,
+    recipient,
+    amountUsdc: "1.25",
+    amountBaseUnits: "1250000",
+    remainingAllowanceUsdc: "2",
+    contract: "0xA549B60313A86288d46323e5723AAa4c0fAA6363",
+    chainId: 5042,
+    requiresDelegateWalletConfirmation: true
+  });
+  assert.deepEqual(body.execution, {
+    submitted: false,
+    signed: false,
+    requiresDelegateWalletConfirmation: true
+  });
+  assert.ok(calls.includes("leases"));
+  assert.ok(calls.includes("remainingAllowance"));
+  assert.ok(calls.includes("USDC"));
+  assert.ok(calls.includes("spend"));
+});
+
+test("rejects a payment above remaining allowance before simulation", async () => {
+  const { client, calls } = rpcClient({ allowance: 1_000_000n });
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  const body = await responseBody(response);
+  assert.equal(response.status, 422);
+  assert.equal(body.status, "rejected");
+  assert.match(String(body.error), /remaining lease allowance/i);
+  assert.ok(!calls.includes("spend"));
+});
+
+test("rejects a non-Arc RPC chain before reading lease state", async () => {
+  const { client, calls } = rpcClient();
+  client.getChainId = async () => 1;
+  const response = await onRequestPost(
+    { request: validPaymentRequest(), env },
+    { createClient: () => client as never }
+  );
+  const body = await responseBody(response);
+  assert.equal(response.status, 422);
+  assert.match(String(body.error), /chain ID 5042/i);
+  assert.equal(calls.length, 0);
+});
