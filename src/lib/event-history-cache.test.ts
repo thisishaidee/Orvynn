@@ -4,7 +4,9 @@ import {
   advanceEventHistoryCheckpoint,
   eventHistoryCacheKey,
   mergeEventHistory,
+  parseEventHistory,
   planEventHistoryScan,
+  serializeEventHistory,
   type EventHistoryCheckpoint,
 } from './event-history-cache'
 
@@ -33,7 +35,7 @@ describe('event history cache primitives', () => {
     assert.notEqual(eventHistoryCacheKey(identity), eventHistoryCacheKey({ ...identity, scope: 'delegate-leases' }))
   })
 
-  it('starts a first scan at deployment block', () => {
+  it('keeps owner, delegate and activity checkpoints separate', () => {\n    assert.equal(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 1100n, checkpoint, identity: { ...identity, scope: 'activity' }, observedCheckpointBlockHash: hashA }).mode, 'rebuild')\n  })\n\n  it('round-trips bigint log fields and rejects malformed cache data', () => {\n    const events = [{ blockNumber: 12n, args: { leaseId: 9n, amount: 2500000n } }]\n    assert.deepEqual(parseEventHistory<typeof events[number]>(serializeEventHistory(events)), events)\n    assert.equal(parseEventHistory('not-json'), undefined)\n    assert.equal(parseEventHistory('\\u007b\\u0022no\\u0022\\u003a\\u0022array\\u0022\\u007d'), undefined)\n  })\n\n  it('starts a first scan at deployment block', () => {
     assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 200n, identity }), { fromBlock: 100n, toBlock: 200n, mode: 'full' })
   })
 
