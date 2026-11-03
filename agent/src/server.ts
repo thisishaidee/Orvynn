@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { prepareLeasePayment } from "./payment.js";
+import { verifyArcDeployment } from "./deployment-check.js";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const PORT = Number(process.env.PORT ?? 8787);
@@ -127,9 +128,20 @@ const server = createServer((request, response) => {
   });
 });
 
-server.listen(PORT, HOST, () => {
-  console.log(`Orvynn agent API listening at http://${HOST}:${PORT}`);
-  console.log("POST /v1/payment-requests/prepare — validates and simulates; never signs or submits.");
+async function start(): Promise<void> {
+  // Fail closed: do not expose the payment-preparation API until the live
+  // RPC, AgentPay bytecode, and configured USDC token have been verified.
+  await verifyArcDeployment();
+  server.listen(PORT, HOST, () => {
+    console.log(`Orvynn agent API listening at http://${HOST}:${PORT}`);
+    console.log("Arc Mainnet deployment verified; API only prepares and simulates payments.");
+    console.log("POST /v1/payment-requests/prepare — never signs or submits.");
+  });
+}
+
+start().catch((error: unknown) => {
+  console.error("Agent API startup verification failed; server was not started:", error);
+  process.exitCode = 1;
 });
 
 function shutdown(): void {
