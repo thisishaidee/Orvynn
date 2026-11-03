@@ -77,7 +77,12 @@ export const onRequestGet = async () => {
   return json({ ok: true, service: "orvynn-agent", mode: "payment-preparation-only", chainId: 5042 });
 };
 
-export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
+type PaymentPreparationClient = ReturnType<typeof createPublicClient>;
+
+export const onRequestPost = async (
+  { request, env }: { request: Request; env: Env },
+  dependencies: { createClient?: (rpcUrl: string) => PaymentPreparationClient } = {}
+) => {
   if (!env.AGENT_API_TOKEN) return json({ error: "Agent API is not configured. Set AGENT_API_TOKEN as a Pages secret." }, 503);
   if (request.headers.get("authorization") !== `Bearer ${env.AGENT_API_TOKEN}`) return json({ error: "Missing or invalid API token." }, 401);
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Agent request inbox storage is not configured." }, 503);
@@ -91,7 +96,7 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
     const contract = getAddress(env.AGENTPAY_ADDRESS || DEFAULT_AGENTPAY);
     const usdc = getAddress(env.USDC_ADDRESS || DEFAULT_USDC);
     const arc = defineChain({ id: 5042, name: "Arc", nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
-    const client = createPublicClient({ chain: arc, transport: http(rpcUrl) });
+    const client = dependencies.createClient?.(rpcUrl) ?? createPublicClient({ chain: arc, transport: http(rpcUrl) });
     if (await client.getChainId() !== 5042) throw new Error("RPC is not connected to Arc Mainnet (chain ID 5042).");
 
     const payment = validatePaymentInput(input);
