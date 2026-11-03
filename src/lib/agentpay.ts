@@ -83,6 +83,8 @@ export interface DataSource<T> {
   reason: string
   /** True when cached data is visible while the authoritative source refreshes. */
   refreshing?: boolean
+  /** A background refresh failed while an older local snapshot remains visible. */
+  refreshError?: string
   /** Retry the underlying read without navigating away from the current section. */
   refetch?: () => void
 }
