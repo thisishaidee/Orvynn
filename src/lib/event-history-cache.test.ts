@@ -9,6 +9,7 @@ import {
   serializeEventHistory,
   type EventHistoryCheckpoint,
 } from './event-history-cache'
+import { readStoredEventHistory, writeStoredEventHistory, type EventHistoryStorage } from './event-history-storage'
 
 const identity = {
   chainId: 5042,
@@ -44,6 +45,33 @@ describe('event history cache primitives', () => {
     assert.deepEqual(parseEventHistory<typeof events[number]>(serializeEventHistory(events)), events)
     assert.equal(parseEventHistory('not-json'), undefined)
     assert.equal(parseEventHistory('{"no":"array"}'), undefined)
+  })
+
+
+  it('persists and reads a complete scoped browser-cache envelope', () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const events = [{ blockNumber: 1200n, transactionHash: '0xabc', logIndex: 0, args: { leaseId: 7n } }]
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+    assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, events), true)
+    assert.deepEqual(readStoredEventHistory<typeof events[number]>(storage, 'key', identity), { checkpoint: saved, events })
+  })
+
+  it('rejects and removes a cache envelope belonging to another stream', () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+    writeStoredEventHistory(storage, 'key', identity, saved, [])
+    assert.equal(readStoredEventHistory(storage, 'key', { ...identity, scope: 'activity' }), undefined)
+    assert.equal(values.has('key'), false)
   })
 
   it('starts a first scan at deployment block', () => {
