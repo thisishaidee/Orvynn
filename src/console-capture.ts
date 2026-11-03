@@ -135,9 +135,18 @@ let _windowCount = 0;
 let _dropped = 0;
 
 function redactConsoleText(value: string): string {
-  return value
+  let output = value;
+  try {
+    output = JSON.stringify(JSON.parse(value), (key, item) => {
+      if (/(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)/i.test(key)) return '[REDACTED]';
+      return item;
+    });
+  } catch {
+    // Non-JSON console output is handled by conservative text redaction below.
+  }
+  return output
     .replace(/(bearer\s+)[a-z0-9._~+\/-]+=*/gi, '$1[REDACTED]')
-    .replace(/((?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature)\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]');
+    .replace(/(["']?(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)["']?\s*[:=]\s*["']?)[^"'\s,;}]+/gi, '$1[REDACTED]');
 }
 
 function send(entry: ConsoleLogEntry): void {
