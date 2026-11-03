@@ -192,7 +192,7 @@ describe('event history cache primitives', () => {
       chainId: 5042,
       contract: '0xabcdef',
       wallet: '0x123456',
-      scope: 'owner-leases',
+      scope: 'owner-lease-created',
       throughBlock: '1200',
       blockHash: hashB,
     })
