@@ -1,6 +1,8 @@
 import {
   createPublicClient,
   decodeFunctionData,
+  decodeEventLog,
+  parseAbi,
   defineChain,
   getAddress,
   http,
@@ -46,7 +48,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
+const spentEventAbi = parseAbi(["event Spent(uint256 indexed leaseId, address indexed recipient, uint256 amount)"]);\n\ntype CompletionClient = {\n  getChainId(): Promise<number>;\n  getTransaction(args: { hash: Hash }): Promise<{ from: string; to: string | null; value: bigint; input: Hex }>;\n  getTransactionReceipt(args: { hash: Hash }): Promise<{\n    status: "success" | "reverted"; blockNumber: bigint;\n    logs: Array<{ address: string; topics: readonly Hex[]; data: Hex }>;\n  }>;\n  getBlock(args: { blockNumber: bigint }): Promise<{ timestamp: bigint }>;\n};\n\nexport const onRequestPost = async (\n  { request, env }: { request: Request; env: Env },\n  dependencies: { createClient?: (rpcUrl: string) => CompletionClient } = {}\n) => {
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Delegate inbox storage is not configured." }, 503);
   if (request.headers.get("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
     return json({ error: "Content-Type must be application/json." }, 415);
@@ -139,7 +141,7 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
       nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
       rpcUrls: { default: { http: [rpcUrl] } },
     });
-    const client = createPublicClient({ chain: arc, transport: http(rpcUrl) });
+    const client = dependencies.createClient\n      ? dependencies.createClient(rpcUrl)\n      : createPublicClient({ chain: arc, transport: http(rpcUrl) }) as unknown as CompletionClient;
     if (await client.getChainId() !== 5042) return json({ error: "RPC is not connected to Arc Mainnet." }, 503);
 
     const [transaction, receipt] = await Promise.all([
@@ -167,7 +169,7 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
       return json({ error: "On-chain spend details do not match this payment request." }, 422);
     }
 
-    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
+    const spentLog = receipt.logs.find((log) => {\n      if (log.address.toLowerCase() !== contract.toLowerCase()) return false;\n      try {\n        const event = decodeEventLog({ abi: spentEventAbi, data: log.data, topics: [...log.topics] });\n        return event.eventName === "Spent" &&\n          event.args.leaseId.toString() === row.lease_id &&\n          event.args.recipient.toLowerCase() === row.recipient_address.toLowerCase() &&\n          event.args.amount.toString() === row.amount_base_units;\n      } catch { return false; }\n    });\n    if (!spentLog) return json({ error: "Successful receipt does not contain the matching AgentPay spend event." }, 422);\n\n    const block = await client.getBlock({ blockNumber: receipt.blockNumber });
     if (Number(block.timestamp) > row.expires_at) {
       return json({ error: "The payment request expired before the transaction was mined." }, 409);
     }
