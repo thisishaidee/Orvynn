@@ -28,6 +28,7 @@ export function AgentRequestInbox({ onSelect }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [loadingStep, setLoadingStep] = useState<"challenge" | "signature" | "inbox" | null>(null);
 
   const refresh = async () => {
     setError("");
@@ -41,6 +42,7 @@ export function AgentRequestInbox({ onSelect }: Props) {
     }
 
     setBusy(true);
+    setLoadingStep("challenge");
     try {
       const challengeResponse = await fetch("/api/agent/delegate-auth/challenge", {
         method: "POST",
@@ -57,10 +59,12 @@ export function AgentRequestInbox({ onSelect }: Props) {
       }
 
       // This is a message signature for inbox access only, not a transaction approval.
+      setLoadingStep("signature");
       const signature = await walletClient.signMessage({
         account: address,
         message: challengeBody.message,
       });
+      setLoadingStep("inbox");
       const inboxResponse = await fetch("/api/agent/delegate-auth/inbox", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -79,6 +83,7 @@ export function AgentRequestInbox({ onSelect }: Props) {
       setError(cause instanceof Error ? cause.message : "Could not load agent payment requests.");
     } finally {
       setBusy(false);
+      setLoadingStep(null);
     }
   };
 
@@ -93,6 +98,13 @@ export function AgentRequestInbox({ onSelect }: Props) {
           {loaded ? "Refresh inbox" : "Load agent requests"}
         </Button>
       </div>
+      {busy && (
+        <p className="text-caption text-ink-soft" role="status" aria-live="polite">
+          {loadingStep === "challenge" && "Preparing secure inbox access…"}
+          {loadingStep === "signature" && "Waiting for your wallet signature. This does not approve a payment…"}
+          {loadingStep === "inbox" && "Verifying your signature and retrieving pending requests…"}
+        </p>
+      )}
       {error && <Notice tone="warning" title="Inbox unavailable">{error}</Notice>}
       {loaded && requests.length === 0 && !error && (
         <Notice tone="info" title="No pending agent requests">There are no unexpired payment requests waiting for this wallet.</Notice>
