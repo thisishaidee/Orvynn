@@ -39,8 +39,12 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
 
   const execute = async (forceRebuild: boolean) => {
     const snapshotHashBefore = await input.getBlockHash(input.snapshotBlock)
-    const observedCheckpointHash = stored && !forceRebuild
-      ? await input.getBlockHash(BigInt(stored.checkpoint.throughBlock))
+    const checkpointBlock = stored ? BigInt(stored.checkpoint.throughBlock) : undefined
+    // A checkpoint ahead of this snapshot cannot be queried at the current
+    // chain height. Let the planner select a full rebuild instead.
+    const observedCheckpointHash = stored && !forceRebuild &&
+      checkpointBlock !== undefined && checkpointBlock <= input.snapshotBlock
+      ? await input.getBlockHash(checkpointBlock)
       : undefined
     const plan = forceRebuild
       ? { fromBlock: input.deploymentBlock, toBlock: input.snapshotBlock, mode: 'rebuild' as const }
