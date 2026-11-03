@@ -37,7 +37,7 @@ jobs:
         run: npm run check
       - name: Verify production API rejects unauthenticated requests
         env:
-          API_URL: https://orvynn.com/api/agent/payment-requests/prepare
+          API_URL: https://orvynn.pages.dev/api/agent/payment-requests/prepare
         run: |
           set -euo pipefail
           unauth_status=$(curl --silent --show-error --output /tmp/orvynn-unauth.json --write-out "%{http_code}" --request POST "$API_URL" --header "content-type: application/json" --data '{}')
