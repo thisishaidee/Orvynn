@@ -11,6 +11,9 @@ export interface EventHistoryStorage {
   removeItem(key: string): void
 }
 
+/** Keep one cache stream comfortably below common browser localStorage quotas. */
+export const MAX_EVENT_HISTORY_CACHE_CHARS = 1_500_000
+
 export type StoredEventHistory<T> = {
   checkpoint: EventHistoryCheckpoint
   events: T[]
@@ -110,7 +113,9 @@ export function writeStoredEventHistory<T>(
       checkpoint,
       events: serializeEventHistory(events),
     }
-    storage.setItem(key, JSON.stringify(envelope))
+    const serialized = JSON.stringify(envelope)
+    if (serialized.length > MAX_EVENT_HISTORY_CACHE_CHARS) return false
+    storage.setItem(key, serialized)
     return true
   } catch {
     // Quota/security failures must never break the authoritative RPC read.
