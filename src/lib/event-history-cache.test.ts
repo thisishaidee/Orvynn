@@ -132,6 +132,42 @@ describe('event history cache primitives', () => {
     assert.equal(snapshotReads, 4)
   })
 
+  it('rebuilds safely when the stored checkpoint is ahead of the current snapshot', async () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({
+      identity, throughBlock: 1000n, blockHash: hashA, complete: true,
+    })
+    writeStoredEventHistory(storage, eventHistoryCacheKey(identity), identity, saved, [
+      { blockNumber: 1000n, transactionHash: '0xold', logIndex: 0 },
+    ])
+    const requestedBlocks: bigint[] = []
+    const scanned: Array<[bigint, bigint]> = []
+    const result = await loadIncrementalEventHistory({
+      identity,
+      deploymentBlock: 100n,
+      snapshotBlock: 900n,
+      storage,
+      getBlockHash: async (block) => {
+        requestedBlocks.push(block)
+        if (block > 900n) throw new Error('RPC must not be asked for a future block')
+        return hashB
+      },
+      scan: async (from, to) => {
+        scanned.push([from, to])
+        return [{ blockNumber: to, transactionHash: '0xrebuilt', logIndex: 0 }]
+      },
+    })
+    assert.equal(result.mode, 'rebuild')
+    assert.deepEqual(scanned, [[100n, 900n]])
+    assert.deepEqual(requestedBlocks, [900n, 900n])
+    assert.deepEqual(result.events.map((event) => event.transactionHash), ['0xrebuilt'])
+  })
+
   it('starts a first scan at deployment block', () => {
     assert.deepEqual(planEventHistoryScan({ deploymentBlock: 100n, snapshotBlock: 200n, identity }), { fromBlock: 100n, toBlock: 200n, mode: 'full' })
   })
