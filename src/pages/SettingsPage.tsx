@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Check, X, Wallet, Network, SlidersHorizontal, ShieldCheck, Info } from 'lucide-react'
+import { Check, X, Wallet, Network, ShieldCheck, Info } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAccount } from 'wagmi'
 import { arc, arcTestnet } from 'viem/chains'
@@ -85,14 +85,6 @@ export function SettingsPage() {
             <InfoRow label="Networks this app can use" hint="Arc Mainnet and Arc Testnet only.">
               Arc Mainnet, Arc Testnet
             </InfoRow>
-          </InfoList>
-        </Section>
-
-        <Section title="Application preferences" description="Current display defaults for this workspace." icon={SlidersHorizontal}>
-          <InfoList>
-            <InfoRow label="Theme">Light</InfoRow>
-            <InfoRow label="Currency display">USDC, 6 decimal places</InfoRow>
-            <InfoRow label="Language">English</InfoRow>
           </InfoList>
         </Section>
 
