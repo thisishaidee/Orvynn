@@ -10,7 +10,7 @@ describe('AgentPay event scan start blocks', () => {
     expect(getAgentPayEventStartBlock(5042002)).toBe(70_433_685n)
   })
 
-  test('keeps an explicit genesis fallback for unknown chains', () => {
-    expect(getAgentPayEventStartBlock(1)).toBe(0n)
+  test('refuses to scan from genesis on unknown chains', () => {
+    expect(() => getAgentPayEventStartBlock(1)).toThrow('Refusing to scan from genesis')
   })
 })
