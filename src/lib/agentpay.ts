@@ -81,6 +81,8 @@ export interface DataSource<T> {
   items: T[]
   /** Plain-language explanation shown when `state` is not `ready`. */
   reason: string
+  /** True when cached data is visible while the authoritative source refreshes. */
+  refreshing?: boolean
   /** Retry the underlying read without navigating away from the current section. */
   refetch?: () => void
 }
