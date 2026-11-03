@@ -145,9 +145,9 @@ function emitWithGroups(event: RpcTraceEvent | HttpTraceEvent): void {
 
 /**
  * Resolve the parent frame's origin for targeted postMessage.
- * Falls back to '*' only if the origin cannot be determined.
+ * If it cannot be determined, fail closed rather than broadcasting to '*'.
  */
-const _parentOrigin: string = (() => {
+const _parentOrigin: string | null = (() => {
   try {
     // ancestorOrigins is available in Chromium and Safari
     if (window.location.ancestorOrigins?.length) {
@@ -161,12 +161,52 @@ const _parentOrigin: string = (() => {
     }
   } catch { /* malformed referrer */ }
 
-  return '*';
+  return null;
 })();
 
+const SENSITIVE_RPC_METHODS = new Set([
+  'eth_sendTransaction',
+  'eth_sendRawTransaction',
+  'eth_sign',
+  'eth_signTransaction',
+  'eth_signTypedData',
+  'eth_signTypedData_v3',
+  'eth_signTypedData_v4',
+  'personal_sign',
+  'wallet_sendCalls',
+  'wallet_sign',
+]);
+
+const SENSITIVE_KEYS = /(?:private.?key|mnemonic|seed.?phrase|password|passwd|authorization|access.?token|refresh.?token|api.?key|secret|signature|signed.?transaction|raw.?transaction|credential)/i;
+
+function redactSensitive(value: unknown, key = ''): unknown {
+  if (SENSITIVE_KEYS.test(key)) return '[REDACTED]';
+  if (Array.isArray(value)) return value.map((item) => redactSensitive(item));
+  if (value && typeof value === 'object') {
+    const clean: Record<string, unknown> = {};
+    for (const [childKey, childValue] of Object.entries(value as Record<string, unknown>)) {
+      clean[childKey] = redactSensitive(childValue, childKey);
+    }
+    return clean;
+  }
+  return value;
+}
+
 function emit(event: TraceEvent): void {
+  if (!_parentOrigin || window.parent === window) return;
   try {
-    window.parent.postMessage({ type: 'studio-trace-event', event }, _parentOrigin);
+    const safeEvent = { ...event } as TraceEvent;
+    if (safeEvent.kind === 'rpc' && SENSITIVE_RPC_METHODS.has(safeEvent.method)) {
+      safeEvent.params = ['[REDACTED: sensitive RPC parameters]'];
+      if ('result' in safeEvent) safeEvent.result = '[REDACTED: sensitive RPC result]';
+    } else if (safeEvent.kind === 'rpc' && 'result' in safeEvent) {
+      safeEvent.result = redactSensitive(safeEvent.result);
+      safeEvent.params = redactSensitive(safeEvent.params) as unknown[];
+    } else if (safeEvent.kind === 'http') {
+      safeEvent.requestBody = redactSensitive(safeEvent.requestBody);
+      safeEvent.responseBody = redactSensitive(safeEvent.responseBody);
+    }
+    window.parent.postMessage({ type: 'studio-trace-event', event: safeEvent }, _parentOrigin);
   } catch {
     /* ignore */
   }
@@ -216,7 +256,7 @@ function parseChainId(raw: unknown): number {
 let _enabled = false;
 
 window.addEventListener('message', (e: MessageEvent<MessageData>) => {
-  if (e.source !== window.parent) {
+  if (e.source !== window.parent || !_parentOrigin || e.origin !== _parentOrigin) {
     return;
   }
 
