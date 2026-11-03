@@ -102,8 +102,9 @@ test("rejects completion when the authentication challenge is missing", async ()
 
 test("rejects an invalid delegate signature without consuming the challenge", async () => {
   const { db, hasChallenge } = mockDb({ challengeWallet: delegate.address });
+  const invalidSignature = await signedProof(other);
   const response = await onRequestPost({
-    request: makeRequest(), env: env(db)
+    request: makeRequest({ signature: invalidSignature }), env: env(db)
   });
   assert.equal(response.status, 401);
   assert.equal(hasChallenge(), true);
