@@ -10,6 +10,7 @@ import {
   type EventHistoryCheckpoint,
 } from './event-history-cache'
 import { readStoredEventHistory, writeStoredEventHistory, type EventHistoryStorage } from './event-history-storage'
+import { loadIncrementalEventHistory } from './incremental-event-history'
 
 const identity = {
   chainId: 5042,
@@ -72,6 +73,63 @@ describe('event history cache primitives', () => {
     writeStoredEventHistory(storage, 'key', identity, saved, [])
     assert.equal(readStoredEventHistory(storage, 'key', { ...identity, scope: 'activity' }), undefined)
     assert.equal(values.has('key'), false)
+  })
+
+
+  it('reuses a verified checkpoint and scans only the overlap', async () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const original = [{ blockNumber: 1000n, transactionHash: '0xold', logIndex: 0 }]
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1000n, blockHash: hashA, complete: true })
+    writeStoredEventHistory(storage, eventHistoryCacheKey(identity), identity, saved, original)
+    const scanned: Array<[bigint, bigint]> = []
+    const result = await loadIncrementalEventHistory({
+      identity,
+      deploymentBlock: 100n,
+      snapshotBlock: 1100n,
+      storage,
+      getBlockHash: async (block) => block === 1000n ? hashA : hashB,
+      scan: async (from, to) => {
+        scanned.push([from, to])
+        return [{ blockNumber: 1090n, transactionHash: '0xnew', logIndex: 0 }]
+      },
+    })
+    assert.equal(result.mode, 'incremental')
+    assert.deepEqual(scanned, [[989n, 1100n]])
+    assert.equal(result.events.length, 2)
+  })
+
+  it('rebuilds from deployment when the snapshot changes during scan', async () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    let snapshotReads = 0
+    const scanned: Array<[bigint, bigint]> = []
+    const result = await loadIncrementalEventHistory({
+      identity,
+      deploymentBlock: 100n,
+      snapshotBlock: 200n,
+      storage,
+      getBlockHash: async (block) => {
+        if (block !== 200n) return hashA
+        snapshotReads += 1
+        return snapshotReads === 2 ? hashB : hashA
+      },
+      scan: async (from, to) => {
+        scanned.push([from, to])
+        return [{ blockNumber: to, transactionHash: `0x${scanned.length}`, logIndex: 0 }]
+      },
+    })
+    assert.equal(result.mode, 'rebuild')
+    assert.deepEqual(scanned, [[100n, 200n], [100n, 200n]])
+    assert.equal(snapshotReads, 4)
   })
 
   it('starts a first scan at deployment block', () => {
