@@ -63,7 +63,7 @@ type RawRpcLog = {
  * Rate limits, timeouts and transport failures must fail fast so recursive
  * splitting does not amplify pressure on an already unhealthy RPC endpoint.
  */
-function isRangeLimitError(error: unknown): boolean {
+export function isRangeLimitError(error: unknown): boolean {
   const seen = new Set<unknown>()
   const parts: string[] = []
   const pending: unknown[] = [error]
@@ -89,10 +89,12 @@ function isRangeLimitError(error: unknown): boolean {
   }
 
   const detail = parts.join(' ').toLowerCase()
+  // Providers reuse JSON-RPC -32005 for throttling as well as query limits.
+  // Never recursively split a rate-limited request: that multiplies traffic.
+  if (/rate limit|too many requests|429|throttl/.test(detail)) return false
   return (
     /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range/.test(detail)
     || /(?:^|\s)413(?:\s|$)/.test(detail)
-    || /(?:^|\s)-32005(?:\s|$)/.test(detail)
   )
 }
 
