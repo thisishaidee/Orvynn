@@ -19,6 +19,15 @@ interface Env {
 }
 const NONCE_TTL_SECONDS = 5 * 60;
 
+function configuredOrigin(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) return null;
+    return url.origin;
+  } catch { return null; }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -42,7 +51,8 @@ async function readJson(request: Request): Promise<unknown> {
 
 export const onRequestPost = async ({ request, env }: { request: Request; env: Env }) => {
   if (!env.AGENT_REQUESTS_DB) return json({ error: "Delegate inbox storage is not configured." }, 503);
-  if (!env.ORVYNN_APP_ORIGIN) return json({ error: "Delegate authentication origin is not configured." }, 503);
+  const origin = configuredOrigin(env.ORVYNN_APP_ORIGIN);
+  if (!origin) return json({ error: "Delegate authentication origin must be configured as a canonical HTTPS origin." }, 503);
 
   let wallet: string;
   try {
@@ -59,7 +69,6 @@ export const onRequestPost = async ({ request, env }: { request: Request; env: E
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + NONCE_TTL_SECONDS;
   const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), (byte) => byte.toString(16).padStart(2, "0")).join("");
-  const origin = new URL(env.ORVYNN_APP_ORIGIN).origin;
   const message = [
     "Orvynn delegate payment inbox authentication",
     "",
