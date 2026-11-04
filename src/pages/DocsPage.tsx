@@ -66,7 +66,7 @@ export function DocsPage({ onLaunch }: { onLaunch: () => void }) {
               </DocCard>
               <DocCard title="For the agent delegate">The delegate uses the wallet address assigned to the lease. It can submit a spend only while the lease is active, within its spending rules, and with sufficient available balance. Each transaction still requires the delegate wallet to sign.</DocCard>
               <DocCard title="Supported networks">
-                <ul className="list-disc space-y-1 pl-5"><li>Arc Mainnet — chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042</code>.</li><li>Arc Testnet — chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042002</code>.</li></ul>
+                <ul className="list-disc space-y-1 pl-5"><li>Arc Mainnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042)</code>.</li><li>Arc Testnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042002)</code>.</li></ul>
                 <p className="mt-2">The frontend is configured for these Arc networks. Ethereum is not a supported Orvynn network.</p>
               </DocCard>
             </div>
@@ -84,7 +84,7 @@ export function DocsPage({ onLaunch }: { onLaunch: () => void }) {
           </section>
 
           <section className="mt-16 scroll-mt-24" id="security">
-            <SectionTitle eyebrow="Know the boundaries" title="What Orvynn does — and does not — control">Orvynn is designed so wallet owners retain custody and the contract enforces lease permissions. Understand these boundaries before funding a lease.</SectionTitle>
+            <SectionTitle eyebrow="Know the boundaries" title="What Orvynn controls, and what it does not control">Orvynn is designed so wallet owners retain custody and the contract enforces lease permissions. Understand these boundaries before funding a lease.</SectionTitle>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <DocCard title="Your wallet keeps the keys">Orvynn does not receive or store wallet private keys. Wallets explicitly confirm transactions.</DocCard>
               <DocCard title="Funding takes two steps">USDC approval and lease funding are separate transactions. Review each transaction in your wallet before confirming.</DocCard>
