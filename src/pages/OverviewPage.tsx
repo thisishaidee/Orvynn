@@ -12,7 +12,7 @@ import { useActivity } from '@/lib/agentpay'
 const FEATURES: { icon: LucideIcon; title: string; text: string }[] = [
   { icon: Gauge, title: 'Per-period cap', text: 'An agent can spend up to its limit each period, and the limit resets on its own.' },
   { icon: ListChecks, title: 'Approved recipients', text: 'Optionally restrict every payment to addresses you have approved.' },
-  { icon: Ban, title: 'Revoke any time', text: 'Cut off an agent instantly and withdraw whatever is left.' },
+  { icon: Ban, title: 'Revoke a lease', text: 'Stop future agent spending. Withdraw any remaining funds separately.' },
 ]
 
 /** Product introduction plus a setup checklist driven by real wallet state. No balances or leases are shown. */
