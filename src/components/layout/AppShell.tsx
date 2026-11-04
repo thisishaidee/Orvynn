@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowUpRight, Github, Menu, X, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Github, Menu, X, BookOpen, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { BRAND } from '@/lib/brand'
 
@@ -171,7 +171,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
                   <span className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[.14em] text-[#BFD5F0]"><span className="size-1.5 rounded-full bg-[#8FB9EB]" /> Built for Arc · USDC</span>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 px-4 text-xs font-medium text-white/85 transition hover:border-white/30 hover:bg-white/10 hover:text-white"><Github className="size-4" /> Source code <ArrowUpRight className="size-3.5" /></a>
+                  <a href="/docs" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 px-4 text-xs font-medium text-white/85 transition hover:border-white/30 hover:bg-white/10 hover:text-white"><BookOpen className="size-4" /> Docs</a><a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-full border border-white/15 px-4 text-xs font-medium text-white/85 transition hover:border-white/30 hover:bg-white/10 hover:text-white"><Github className="size-4" /> Source code <ArrowUpRight className="size-3.5" /></a>
                   <a href="https://arc.network" target="_blank" rel="noreferrer" className="inline-flex min-h-10 items-center gap-2 rounded-full bg-white px-4 text-xs font-semibold text-brand-navy transition hover:bg-[#EAF2FC]">Explore Arc <ArrowUpRight className="size-3.5" /></a>
                 </div>
               </div>
