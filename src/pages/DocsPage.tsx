@@ -66,7 +66,7 @@ export function DocsPage({ onLaunch }: { onLaunch: () => void }) {
               </DocCard>
               <DocCard title="For the agent delegate">The delegate uses the wallet address assigned to the lease. It can submit a spend only while the lease is active, within its spending rules, and with sufficient available balance. Each transaction still requires the delegate wallet to sign.</DocCard>
               <DocCard title="Supported networks">
-                <ul className="list-disc space-y-1 pl-5"><li>Arc Mainnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042)</code>.</li><li>Arc Testnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042002)</code>.</li></ul>
+                <ul className="list-disc space-y-1 pl-5"><li>Arc Mainnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042</code>).</li><li>Arc Testnet (chain ID <code className="rounded bg-surface-muted px-1.5 py-0.5">5042002</code>).</li></ul>
                 <p className="mt-2">The frontend is configured for these Arc networks. Ethereum is not a supported Orvynn network.</p>
               </DocCard>
             </div>
