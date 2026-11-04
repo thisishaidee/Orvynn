@@ -162,7 +162,6 @@ export function DelegateSpendPanel() {
         description="Review a payment request from an agent. Orvynn checks the assigned lease, then your delegate wallet must explicitly approve the transaction."
       />
       <div className="mt-4 space-y-4">
-        <AgentRequestInbox onSelect={selectAgentRequest} />
         <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
           <p className="text-overline uppercase text-ink-soft">How the approval works</p>
           <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
@@ -171,7 +170,8 @@ export function DelegateSpendPanel() {
             <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
           </ul>
         </div>
-        <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
+        <AgentRequestInbox onSelect={selectAgentRequest} />
+        <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded below use the same live lease checks and explicit wallet approval.</p>
       </div>
       <div className="mt-4">
       {source.state !== 'ready' ? (
