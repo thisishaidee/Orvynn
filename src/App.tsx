@@ -13,6 +13,7 @@ import { AgentsPage } from '@/pages/AgentsPage'
 import { LeasesPage } from '@/pages/LeasesPage'
 import { DeployPage } from '@/pages/DeployPage'
 import { LandingPage } from '@/pages/LandingPage'
+import { DocsPage } from '@/pages/DocsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { WalletPage } from '@/pages/WalletPage'
@@ -31,6 +32,8 @@ function renderPage(page: PageId, navigate: (page: PageId) => void, canAccessDep
   switch (page) {
     case 'landing':
       return <LandingPage onLaunch={() => navigate('overview')} />
+    case 'docs':
+      return <DocsPage onLaunch={() => navigate('overview')} />
     case 'agents':
       return <AgentsPage />
     case 'leases':
@@ -62,6 +65,7 @@ export default function App() {
   const canAccessDeploy = isConnected && isExpectedDeployer(address)
 
   if (page === 'landing') return <LandingPage onLaunch={() => navigate('overview')} />
+  if (page === 'docs') return <DocsPage onLaunch={() => navigate('overview')} />
 
   return (
     <WalletModalProvider>

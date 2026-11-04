@@ -41,7 +41,7 @@ export function LandingPage({ onLaunch }: { onLaunch: () => void }) {
           <span className="text-base font-semibold tracking-tight">{BRAND.name}</span>
         </a>
         <div className="flex items-center gap-3">
-          <a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="hidden text-sm font-medium text-ink-soft transition hover:text-ink sm:inline-flex">Source code</a>
+          <a href="/docs" className="text-sm font-medium text-ink-soft transition hover:text-ink">Docs</a><a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="hidden text-sm font-medium text-ink-soft transition hover:text-ink sm:inline-flex">Source code</a>
           <button onClick={onLaunch} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-medium text-brand-navy shadow-card transition hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Open app <ArrowRight className="size-4" aria-hidden /></button>
         </div>
       </header>
@@ -147,7 +147,7 @@ export function LandingPage({ onLaunch }: { onLaunch: () => void }) {
             </div>
           </div>
           <div className="grid grid-cols-1 gap-8 pt-5 sm:grid-cols-2 sm:gap-10 lg:grid-cols-3 lg:gap-16">
-            <div><p className="text-[11px] font-medium uppercase tracking-[.08em] text-ink-mute">Product</p><nav aria-label="Product links" className="mt-4 flex flex-col items-start gap-3 text-[15px] leading-6 text-ink"><a href="#how-it-works" className="transition hover:text-brand-blue">How it works</a><a href="/?page=overview" className="transition hover:text-brand-blue">Overview</a><a href="/?page=leases" className="transition hover:text-brand-blue">Leases</a></nav></div>
+            <div><p className="text-[11px] font-medium uppercase tracking-[.08em] text-ink-mute">Product</p><nav aria-label="Product links" className="mt-4 flex flex-col items-start gap-3 text-[15px] leading-6 text-ink"><a href="#how-it-works" className="transition hover:text-brand-blue">How it works</a><a href="/docs" className="transition hover:text-brand-blue">Documentation</a><a href="/?page=overview" className="transition hover:text-brand-blue">Overview</a><a href="/?page=leases" className="transition hover:text-brand-blue">Leases</a></nav></div>
             <div><p className="text-[11px] font-medium uppercase tracking-[.08em] text-ink-mute">Developers</p><nav aria-label="Developer links" className="mt-4 flex flex-col items-start gap-3 text-[15px] leading-6 text-ink"><a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="transition hover:text-brand-blue">GitHub repository</a><a href={BRAND.repoUrl + '/tree/main/contracts'} target="_blank" rel="noreferrer" className="transition hover:text-brand-blue">Smart contracts</a></nav></div>
             <div><p className="text-[11px] font-medium uppercase tracking-[.08em] text-ink-mute">Company</p><nav aria-label="Company links" className="mt-4 flex flex-col items-start gap-3 text-[15px] leading-6 text-ink"><a href={BRAND.repoUrl} target="_blank" rel="noreferrer" className="transition hover:text-brand-blue">About Orvynn</a><a href="https://arc.network" target="_blank" rel="noreferrer" className="transition hover:text-brand-blue">Built for Arc</a></nav></div>
           </div>

@@ -3,11 +3,12 @@ import { BRAND } from '@/lib/brand'
 
 /** User-facing application pages, in navigation order. */
 export const PAGES = ['overview', 'agents', 'leases', 'activity', 'wallet', 'settings', 'deploy'] as const
-/** The public landing page is the root route; design remains an internal URL-only page. */
-export type PageId = (typeof PAGES)[number] | 'design' | 'landing'
+/** Public routes do not require a connected wallet. */
+export type PageId = (typeof PAGES)[number] | 'design' | 'landing' | 'docs'
 
 const TITLES: Record<PageId, string> = {
   landing: 'Spending control for AI agents on Arc',
+  docs: 'Documentation',
   overview: 'Overview',
   agents: 'Agents',
   leases: 'Leases',
@@ -21,6 +22,10 @@ const TITLES: Record<PageId, string> = {
 export const pageTitle = (page: PageId): string => TITLES[page]
 
 function readPage(): PageId {
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/'
+  if (pathname === '/docs') return 'docs'
+  if (pathname !== '/') return 'landing'
+
   const value = new URLSearchParams(window.location.search).get('page')
   if (value === 'design') return 'design'
   if ((PAGES as readonly string[]).includes(value ?? '')) return value as PageId
@@ -28,8 +33,8 @@ function readPage(): PageId {
 }
 
 /**
- * Minimal query-string routing keeps app pages shareable. The root URL is public;
- * the dashboard is explicitly opened with ?page=overview.
+ * App pages retain query-string URLs. Public docs use /docs so the route is
+ * readable, shareable and directly accessible without a wallet connection.
  */
 export function useRoute(): [PageId, (page: PageId) => void] {
   const [page, setPage] = useState<PageId>(readPage)
@@ -48,8 +53,15 @@ export function useRoute(): [PageId, (page: PageId) => void] {
 
   const navigate = useCallback((next: PageId) => {
     const url = new URL(window.location.href)
-    if (next === 'landing') url.searchParams.delete('page')
-    else url.searchParams.set('page', next)
+    if (next === 'docs') {
+      url.pathname = '/docs'
+      url.search = ''
+      url.hash = ''
+    } else {
+      url.pathname = '/'
+      if (next === 'landing') url.searchParams.delete('page')
+      else url.searchParams.set('page', next)
+    }
     window.history.pushState(null, '', url)
     setPage(next)
     window.scrollTo({ top: 0 })
