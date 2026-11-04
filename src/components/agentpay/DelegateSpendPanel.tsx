@@ -161,9 +161,19 @@ export function DelegateSpendPanel() {
         title="Agent payment requests"
         description="Review a payment request from an agent. Orvynn checks the assigned lease, then your delegate wallet must explicitly approve the transaction."
       />
-      <div className="mb-4">
+      <div className="mt-4 space-y-4">
+        <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
+          <p className="text-overline uppercase text-ink-soft">How the approval works</p>
+          <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Agent submits a request</span></li>
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Orvynn checks the live lease</span></li>
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
+          </ul>
+        </div>
         <AgentRequestInbox onSelect={selectAgentRequest} />
+        <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded below use the same live lease checks and explicit wallet approval.</p>
       </div>
+      <div className="mt-4">
       {source.state !== 'ready' ? (
         <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
           {source.reason}
@@ -205,15 +215,7 @@ export function DelegateSpendPanel() {
           </Button>
         </div>
       )}
-          <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
-            <p className="text-overline uppercase text-ink-soft">How the approval works</p>
-            <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Agent submits a request</span></li>
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Orvynn checks the live lease</span></li>
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
-            </ul>
-          </div>
-          <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
+      </div>
       <Modal
         open={open}
         onClose={() => { if (!busy) resetRequest() }}
