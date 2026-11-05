@@ -13,6 +13,8 @@ export interface Column<T> {
   primary?: boolean
   /** Hide on tablet (768-1023) to keep the table readable. Still shown on mobile cards and laptop+. */
   hideOnTablet?: boolean
+  /** Let dense controls use the full card width on mobile instead of sharing a two-column detail row. */
+  mobileFullWidth?: boolean
 }
 
 export interface DataTableProps<T> {
@@ -100,7 +102,7 @@ export function DataTable<T>({ columns, rows, getRowId, caption, loading, error,
             <div className="min-w-0 font-medium">{primary.cell(row)}</div>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5">
               {secondary.map((c) => (
-                <div key={c.key} className="min-w-0">
+                <div key={c.key} className={cn('min-w-0', c.mobileFullWidth && 'col-span-2')}>
                   <dt className="text-overline uppercase text-ink-soft">{c.header}</dt>
                   <dd className="mt-0.5 min-w-0 break-words text-body">{c.cell(row)}</dd>
                 </div>
