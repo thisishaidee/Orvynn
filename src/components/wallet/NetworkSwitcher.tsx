@@ -74,7 +74,7 @@ export function NetworkSwitcher() {
         </Button>
       </div>
       {chainId === arcTestnet.id && (
-        <div className="rounded-control border border-line bg-surface-subtle p-3">
+        <div className="rounded-control border border-line bg-surface p-3">
           <p className="text-support font-medium text-ink">Need test USDC?</p>
           <p className="mt-1 text-support text-ink-soft">
             Get 20 testnet USDC from Circle's faucet. The faucet limit is one request every 2 hours per address and network.
