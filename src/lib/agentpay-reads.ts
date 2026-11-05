@@ -158,27 +158,34 @@ async function discoverLeases(
 
   const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
   const allowedByLease = new Map<string, Map<string, boolean>>()
+  // Recipient history is supplemental display data. A failure to retrieve
+  // old AllowlistUpdated logs must never hide valid leases read from storage.
+  let allowlistHistoryAvailable = true
   if (includeAllowlistHistory && ids.length > 0) {
-    const allowlistLogs = await getLogsChunked(client, {
-      address: contract,
-      event: eventAbi('AllowlistUpdated') as never,
-      args: { leaseId: ids },
-      fromBlock,
-      toBlock: snapshot,
-    })
-    for (const log of allowlistLogs) {
-      const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-      if (args.leaseId === undefined || !args.recipient) continue
-      const key = args.leaseId.toString()
-      const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
-      permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-      allowedByLease.set(key, permissions)
+    try {
+      const allowlistLogs = await getLogsChunked(client, {
+        address: contract,
+        event: eventAbi('AllowlistUpdated') as never,
+        args: { leaseId: ids },
+        fromBlock,
+        toBlock: snapshot,
+      })
+      for (const log of allowlistLogs) {
+        const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+        if (args.leaseId === undefined || !args.recipient) continue
+        const key = args.leaseId.toString()
+        const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
+        permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+        allowedByLease.set(key, permissions)
+      }
+    } catch {
+      allowlistHistoryAvailable = false
     }
   }
 
   return matching.map(({ id, row, remaining }) => {
     const permissions = allowedByLease.get(id.toString())
-    const allowed = includeAllowlistHistory
+    const allowed = includeAllowlistHistory && allowlistHistoryAvailable
       ? permissions
         ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
         : []
