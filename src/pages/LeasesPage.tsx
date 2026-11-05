@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
 import { Archive, ArchiveRestore, KeyRound, Plus, ShieldCheck, Clock3, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
-import { Button, Card, CardHeader, ConfirmDialog, DataTable, PageHeader, ProgressBar, StatusBadge, StatCard, type Column } from '@/components/ui'
+import { Button, Card, CardHeader, ConfirmDialog, DataTable, Notice, PageHeader, ProgressBar, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { LeaseDetail } from '@/components/agentpay/LeaseDetail'
 import { CreateLeaseModal } from '@/components/agentpay/CreateLeaseModal'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
@@ -117,6 +117,7 @@ export function LeasesPage() {
       key: 'actions',
       header: 'Actions',
       align: 'right',
+      mobileFullWidth: true,
       cell: ({ lease, archived }) => (
         <span className="inline-flex flex-wrap justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setSelectedId(lease.id)}>View</Button>
@@ -145,6 +146,14 @@ export function LeasesPage() {
         <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : undefined} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
+      {source.refreshError && (
+        <Notice tone="warning" title="Lease list may be out of date">
+          {source.refreshError}
+          <span className="ml-2 inline-flex">
+            <Button size="sm" variant="secondary" onClick={() => source.refetch?.()}>Retry</Button>
+          </span>
+        </Notice>
+      )}
       <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setSelectedId(undefined)} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
