@@ -75,7 +75,7 @@ function SidebarContent({ nav, activeId, onNavigate, footer }: SidebarContentPro
             <ExternalLink className="size-3.5" aria-hidden />
           </a>
         </div>
-        <div className="mt-4 flex items-center justify-between px-1">
+        <div className="mt-6 flex items-center justify-between px-1">
           <a href="/docs" className="inline-flex items-center gap-1.5 text-xs text-brand-pale transition-colors hover:text-white">
             <BookOpen className="size-3.5" aria-hidden />
             Documentation
