@@ -14,6 +14,7 @@ export function WalletButton({ tone = 'light' }: { tone?: 'dark' | 'light' }) {
 
   return (
     <Button
+      className="max-w-[8.5rem] px-2 sm:max-w-none sm:px-4"
       variant={tone === 'dark' ? 'inverse' : 'secondary'}
       onClick={open}
       loading={isConnecting || isReconnecting}
@@ -21,7 +22,7 @@ export function WalletButton({ tone = 'light' }: { tone?: 'dark' | 'light' }) {
       aria-label={isConnected ? 'Wallet connected. Open account' : 'Connect wallet'}
     >
       {isConnected && address ? (
-        <span className="num max-w-[9rem] truncate">{shortAddress(address)}</span>
+        <span className="num max-w-[6rem] truncate sm:max-w-[9rem]">{shortAddress(address)}</span>
       ) : (
         <>
           <span className="sm:hidden">Connect</span>
