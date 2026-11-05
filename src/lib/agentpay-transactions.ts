@@ -68,6 +68,7 @@ export function useAgentPayTransactions() {
     // background so the wallet flow does not remain blocked by follow-up reads.
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'] }),
+      queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'] }),
       queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'] }),
     ]).catch(() => undefined)
     return { hash, blockNumber: receipt.blockNumber }

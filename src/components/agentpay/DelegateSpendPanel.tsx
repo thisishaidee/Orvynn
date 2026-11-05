@@ -164,56 +164,60 @@ export function DelegateSpendPanel() {
       <div className="mb-4">
         <AgentRequestInbox onSelect={selectAgentRequest} />
       </div>
-      {source.state !== 'ready' ? (
-        <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
-          {source.reason}
-        </Notice>
-      ) : source.refreshing && activeLeases.length === 0 ? (
-        <Notice tone="info" title="Checking assigned leases on Arc">
-          Your previous lease snapshot is empty. Orvynn is checking the live network before confirming that no active leases are assigned.
-        </Notice>
-      ) : activeLeases.length === 0 ? (
-        <Notice tone="info" title="No active leases assigned">
-          This connected wallet is not currently the delegate on an active lease. Ask the lease owner to create or fund a lease for this wallet.
-        </Notice>
-      ) : (
-        <div className="space-y-4">
-          {source.refreshing && (
-            <Notice tone="info" title="Refreshing lease data">
-              Showing your last saved lease snapshot while Orvynn verifies the current limits on Arc. Payment approval stays disabled until this refresh finishes.
-            </Notice>
-          )}
-          {source.refreshError && (
-            <Notice tone="warning" title="Live lease check failed">
-              Your saved snapshot is shown for reference only. Payment requests are disabled until Arc responds successfully. {source.refreshError}
-              <span className="mt-2 block"><Button size="sm" variant="secondary" onClick={() => source.refetch?.()}>Retry live check</Button></span>
-            </Notice>
-          )}
-          <Field label="Assigned lease">
-            {(props) => <Select {...props} value={selected?.id ?? ''} onChange={(event) => setLeaseId(event.target.value)}>
-              {activeLeases.map((lease) => <option key={lease.id} value={lease.id}>Lease {lease.id} · {formatUsdc(lease.cap)} USDC cap · owner {shortAddress(lease.owner)}</option>)}
-            </Select>}
-          </Field>
-          {selected && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-brand-mist p-3">
-              <span className="text-support text-ink-soft">Available to spend now</span>
-              <strong className="num text-label">{formatUsdc(available)} USDC</strong>
-            </div>
-          )}
-          <Button disabled={source.refreshing || Boolean(source.refreshError) || tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
-            Create payment request
-          </Button>
+      <div className="mt-6 space-y-3">
+        <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
+          <p className="text-overline uppercase text-ink-soft">How the approval works</p>
+          <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Agent submits a request</span></li>
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Orvynn checks the live lease</span></li>
+            <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
+          </ul>
         </div>
-      )}
-          <div className="rounded-control border border-line bg-brand-mist p-3 sm:p-4">
-            <p className="text-overline uppercase text-ink-soft">How the approval works</p>
-            <ul className="mt-2 flex flex-col gap-2 text-support text-ink">
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Agent submits a request</span></li>
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Orvynn checks the live lease</span></li>
-              <li className="flex items-start gap-2"><span aria-hidden="true" className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-blue" /> <span>Delegate approves in wallet</span></li>
-            </ul>
+        <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
+      </div>
+      <div className="mt-6">
+        {source.state !== 'ready' ? (
+          <Notice tone={source.state === 'error' ? 'danger' : 'info'} title={source.state === 'missing-address' ? 'Contract address not configured' : source.state === 'unsupported-network' ? 'Unsupported network' : source.state === 'disconnected' ? 'Wallet not connected' : 'Loading assigned leases'}>
+            {source.reason}
+          </Notice>
+        ) : source.refreshing && activeLeases.length === 0 ? (
+          <Notice tone="info" title="Checking assigned leases on Arc">
+            Your previous lease snapshot is empty. Orvynn is checking the live network before confirming that no active leases are assigned.
+          </Notice>
+        ) : activeLeases.length === 0 ? (
+          <Notice tone="info" title="No active leases assigned">
+            This connected wallet is not currently the delegate on an active lease. Ask the lease owner to create or fund a lease for this wallet.
+          </Notice>
+        ) : (
+          <div className="space-y-4">
+            {source.refreshing && (
+              <Notice tone="info" title="Refreshing lease data">
+                Showing your last saved lease snapshot while Orvynn verifies the current limits on Arc. Payment approval stays disabled until this refresh finishes.
+              </Notice>
+            )}
+            {source.refreshError && (
+              <Notice tone="warning" title="Live lease check failed">
+                Your saved snapshot is shown for reference only. Payment requests are disabled until Arc responds successfully. {source.refreshError}
+                <span className="mt-2 block"><Button size="sm" variant="secondary" onClick={() => source.refetch?.()}>Retry live check</Button></span>
+              </Notice>
+            )}
+            <Field label="Assigned lease">
+              {(props) => <Select {...props} value={selected?.id ?? ''} onChange={(event) => setLeaseId(event.target.value)}>
+                {activeLeases.map((lease) => <option key={lease.id} value={lease.id}>Lease {lease.id} · {formatUsdc(lease.cap)} USDC cap · owner {shortAddress(lease.owner)}</option>)}
+              </Select>}
+            </Field>
+            {selected && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-brand-mist p-3">
+                <span className="text-support text-ink-soft">Available to spend now</span>
+                <strong className="num text-label">{formatUsdc(available)} USDC</strong>
+              </div>
+            )}
+            <Button disabled={source.refreshing || Boolean(source.refreshError) || tx.state !== 'ready' || !selected || available === 0n} onClick={() => { setError(''); setStage('details'); setOpen(true) }}>
+              Create payment request
+            </Button>
           </div>
-          <p className="text-support text-ink-soft">You can also create a payment manually. External agent requests loaded above use the same live lease checks and explicit wallet approval.</p>
+        )}
+      </div>
       <Modal
         open={open}
         onClose={() => { if (!busy) resetRequest() }}
