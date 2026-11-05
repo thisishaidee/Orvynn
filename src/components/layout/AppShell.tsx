@@ -144,6 +144,17 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
             </ul>
           </nav>
           {sidebarFooter && <div className="hidden shrink-0 border-t border-white/10 p-3 lg:block">{sidebarFooter}</div>}
+          <div className="shrink-0 border-t border-white/10 px-2 pb-4 pt-4 lg:px-3">
+            <a href="/docs" aria-label="Documentation" title="Documentation"
+              className="focus-ring-dark flex min-h-10 items-center justify-center gap-2 rounded-control px-2 text-xs text-brand-pale transition-colors hover:bg-white/5 hover:text-white lg:justify-start lg:px-3">
+              <BookOpen className="size-4 shrink-0" aria-hidden />
+              <span className="hidden lg:inline">Documentation</span>
+            </a>
+            <p className="mt-3 text-center text-[9px] leading-4 text-white/40 lg:text-left lg:px-3">
+              <span className="lg:hidden">© 2026</span>
+              <span className="hidden lg:inline">© 2026 Orvynn. All rights reserved.</span>
+            </p>
+          </div>
         </div>
       </aside>
 
