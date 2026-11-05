@@ -180,7 +180,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
           type="button"
           aria-label="Close navigation menu"
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 bg-[#081326]/75 backdrop-blur-sm md:hidden"
+          className="fixed inset-0 z-40 bg-[#081326]/75 backdrop-blur-sm md:hidden"
         />
       )}
       <aside
@@ -188,11 +188,25 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
         aria-label="Mobile navigation"
         aria-hidden={!mobileMenuOpen}
         className={cn(
-          'fixed bottom-0 left-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-50 w-[min(19rem,88vw)] overflow-y-auto overscroll-contain border-r border-white/10 bg-brand-navy bg-navy-gradient text-white shadow-2xl transition-transform duration-300 ease-out md:hidden',
+          'fixed inset-0 z-50 w-[min(19rem,88vw)] overflow-hidden border-r border-white/10 bg-brand-navy bg-navy-gradient text-white shadow-2xl transition-transform duration-300 ease-out md:hidden',
           mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full pointer-events-none',
         )}
       >
-        <SidebarContent nav={nav} activeId={activeId} onNavigate={handleNavigate} footer={sidebarFooter} />
+        <div className="flex h-full min-h-0 flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
+          <div className="flex h-14 shrink-0 items-center justify-end px-4">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              aria-label="Close navigation menu"
+              className="focus-ring-dark inline-flex size-11 items-center justify-center rounded-control text-white transition-colors hover:bg-white/10"
+            >
+              <X className="size-6" aria-hidden />
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            <SidebarContent nav={nav} activeId={activeId} onNavigate={handleNavigate} footer={sidebarFooter} />
+          </div>
+        </div>
       </aside>
 
       <div className="md:pl-[var(--ap-sidebar-rail)] lg:pl-[var(--ap-sidebar-wide)] xl:pl-[var(--ap-sidebar-wider)]">
