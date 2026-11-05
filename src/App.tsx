@@ -1,5 +1,4 @@
-import { Activity, Bot, BookOpen, Droplets, ExternalLink, KeyRound, LayoutDashboard, Settings, Wallet } from 'lucide-react'
-import { arcTestnet } from 'viem/chains'
+import { Activity, Bot, KeyRound, LayoutDashboard, Settings, Wallet } from 'lucide-react'
 import { AppShell, type NavItem } from '@/components/layout/AppShell'
 import { WalletButton } from '@/components/layout/WalletButton'
 import { Notice } from '@/components/ui'
@@ -18,8 +17,6 @@ import { DocsPage } from '@/pages/DocsPage'
 import { OverviewPage } from '@/pages/OverviewPage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { WalletPage } from '@/pages/WalletPage'
-
-const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com'
 
 /** User-facing navigation. The design-system preview is internal: open it with ?page=design. */
 const NAV: NavItem[] = [
@@ -64,39 +61,11 @@ function renderPage(page: PageId, navigate: (page: PageId) => void, canAccessDep
 
 export default function App() {
   const [page, navigate] = useRoute()
-  const { address, isConnected, chainId } = useAccount()
+  const { address, isConnected } = useAccount()
   const canAccessDeploy = isConnected && isExpectedDeployer(address)
 
   if (page === 'landing') return <LandingPage onLaunch={() => navigate('overview')} />
   if (page === 'docs') return <DocsPage onLaunch={() => navigate('overview')} />
-
-  const sidebarFooter = (
-    <div className="space-y-3">
-      <div className="rounded-card border border-white/10 bg-white/[0.06] p-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-white">
-          <Droplets className="size-4 text-[#A9CCFF]" aria-hidden />
-          Testnet faucet
-        </div>
-        <p className="mt-1.5 text-xs leading-5 text-white/65">
-          Get test USDC to try Orvynn without using real funds.
-        </p>
-        <a
-          href={ARC_TESTNET_FAUCET_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-control bg-white px-3 text-sm font-semibold text-brand-navy transition-colors hover:bg-[#EAF2FC]"
-        >
-          Get test USDC <ExternalLink className="size-3.5" aria-hidden />
-        </a>
-        <p className="mt-2 text-[11px] leading-4 text-white/50">
-          {chainId === arcTestnet.id ? 'Arc Testnet selected.' : 'Switch to Arc Testnet before requesting test USDC.'}
-        </p>
-      </div>
-      <button type="button" onClick={() => navigate('docs')} className="inline-flex items-center gap-1.5 px-1 text-xs text-white/60 transition-colors hover:text-white">
-        <BookOpen className="size-3.5" aria-hidden /> Documentation &amp; help
-      </button>
-    </div>
-  )
 
   return (
     <WalletModalProvider>
@@ -105,7 +74,6 @@ export default function App() {
         nav={NAV}
         activeId={page}
         onNavigate={(id) => navigate(id as PageId)}
-        sidebarFooter={sidebarFooter}
         topBarActions={(tone) => <WalletButton tone={tone} />}
       >
         {renderPage(page, navigate, canAccessDeploy)}
