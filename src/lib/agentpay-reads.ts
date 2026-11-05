@@ -83,67 +83,42 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Use one block for lease events, allowlist history and current contract state.
+  // Lease IDs are sequential and the contract exposes nextLeaseId. Enumerate
+  // current storage directly instead of scanning every historical LeaseCreated log.
   const snapshot = await client.getBlockNumber()
-  const latest = await client.getBlock({ blockNumber: snapshot })
-  const created = await getLogsChunked(client, {
-    address: contract,
-    event: eventAbi('LeaseCreated') as never,
-    args: filter,
-    fromBlock,
-    toBlock: snapshot,
-  })
-
-  const ids = [...new Set(
-    created
-      .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
-      .filter((id): id is bigint => id !== undefined),
-  )]
-  if (ids.length === 0) return []
-
-  // Fetch only permission changes for leases belonging to this wallet.
-  const allowlistLogs = includeAllowlistHistory
-    ? await getLogsChunked(client, {
-        address: contract,
-        event: eventAbi('AllowlistUpdated') as never,
-        args: { leaseId: ids },
-        fromBlock,
-        toBlock: snapshot,
-      })
-    : []
-
-  const allowedByLease = new Map<string, Map<string, boolean>>()
-  for (const log of allowlistLogs) {
-    const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-    if (args.leaseId === undefined || !args.recipient) continue
-    const key = args.leaseId.toString()
-    const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
-    permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-    allowedByLease.set(key, permissions)
-  }
-
-  const leases: Lease[] = []
+  const [latest, nextLeaseId] = await Promise.all([
+    client.getBlock({ blockNumber: snapshot }),
+    client.readContract({
+      address: contract,
+      abi: agentPayAbi,
+      functionName: 'nextLeaseId',
+      blockNumber: snapshot,
+    }),
+  ])
+  const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 25
-  for (let offset = 0; offset < ids.length; offset += batchSize) {
-    const batch = ids.slice(offset, offset + batchSize)
-    const contracts = batch.flatMap((id) => [
+
+  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
+    const ids = Array.from(
+      { length: Number(nextLeaseId - first > BigInt(batchSize) ? BigInt(batchSize) : nextLeaseId - first) },
+      (_, index) => first + BigInt(index),
+    )
+    const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
     ])
 
-    let results: unknown[]
+    let values: unknown[]
     try {
-      // One bounded multicall replaces two independent RPC requests per lease.
-      results = await client.multicall({
+      values = await client.multicall({
         contracts: contracts as never,
         blockNumber: snapshot,
         allowFailure: false,
       }) as unknown[]
     } catch {
-      // Some RPC/network configurations may not expose Multicall3. Fall back
-      // to bounded direct reads at the same snapshot rather than failing the
-      // whole dashboard solely because batching is unavailable.
-      const fallbackRows = await Promise.all(batch.map(async (id) => {
+      // Some Arc RPC configurations may not expose Multicall3. Keep the
+      // fallback bounded and read against the same block snapshot.
+      const rows = await Promise.all(ids.map(async (id) => {
         const [row, remaining] = await Promise.all([
           client.readContract({
             address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
@@ -154,33 +129,62 @@ async function discoverLeases(
         ])
         return { id, row, remaining }
       }))
-      for (const { id, row, remaining } of fallbackRows) {
-        const permissions = allowedByLease.get(id.toString())
-        const allowed = includeAllowlistHistory
-          ? permissions
-            ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
-            : []
-          : undefined
-        leases.push(toLease(id, row, remaining, allowed, latest.timestamp))
+      for (const item of rows) {
+        const matches = filter.owner
+          ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
+          : filter.delegate
+            ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
+            : false
+        if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') matching.push(item)
       }
       continue
     }
 
-    for (let index = 0; index < batch.length; index += 1) {
-      const id = batch[index]
-      const row = results[index * 2] as LeaseTuple
-      const remaining = results[index * 2 + 1] as bigint
-      const permissions = allowedByLease.get(id.toString())
-      const allowed = includeAllowlistHistory
-        ? permissions
-          ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
-          : []
-        : undefined
-      leases.push(toLease(id, row, remaining, allowed, latest.timestamp))
+    ids.forEach((id, index) => {
+      const row = values[index * 2] as LeaseTuple
+      const remaining = values[index * 2 + 1] as bigint
+      const matches = filter.owner
+        ? row[0].toLowerCase() === filter.owner.toLowerCase()
+        : filter.delegate
+          ? row[1].toLowerCase() === filter.delegate.toLowerCase()
+          : false
+      if (matches && row[0] !== '0x0000000000000000000000000000000000000000') {
+        matching.push({ id, row, remaining })
+      }
+    })
+  }
+
+  if (matching.length === 0) return []
+
+  const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
+  const allowedByLease = new Map<string, Map<string, boolean>>()
+  if (includeAllowlistHistory && ids.length > 0) {
+    const allowlistLogs = await getLogsChunked(client, {
+      address: contract,
+      event: eventAbi('AllowlistUpdated') as never,
+      args: { leaseId: ids },
+      fromBlock,
+      toBlock: snapshot,
+    })
+    for (const log of allowlistLogs) {
+      const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+      if (args.leaseId === undefined || !args.recipient) continue
+      const key = args.leaseId.toString()
+      const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
+      permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+      allowedByLease.set(key, permissions)
     }
   }
 
-  return leases.sort((a, b) => Number(b.id) - Number(a.id))
+  return matching.map(({ id, row, remaining }) => {
+    const permissions = allowedByLease.get(id.toString())
+    const allowed = includeAllowlistHistory
+      ? permissions
+        ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
+        : []
+      : undefined
+    return toLease(id, row, remaining, allowed, latest.timestamp)
+  }).sort((a, b) => Number(b.id) - Number(a.id))
 }
 
 const DELEGATE_LEASE_CACHE_VERSION = 1
@@ -426,7 +430,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
   const query = useQuery({
     queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', leases.map((l) => l.id).join(',')],
     enabled: gate.ok && leasesReady,
-    staleTime: 15_000,
+    staleTime: 60_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: () => {
