@@ -1,9 +1,12 @@
 import { useEffect } from 'react'
+import { ExternalLink } from 'lucide-react'
 import { useSwitchChain, useAccount } from 'wagmi'
 import { arc, arcTestnet } from 'viem/chains'
 import { Button } from '@/components/ui'
 import { isSupportedChain } from '@/config'
 import { useNetworkInfo } from '@/lib/wallet'
+
+const ARC_TESTNET_FAUCET_URL = 'https://faucet.circle.com'
 
 function describeSwitchError(error: Error): string {
   const text = error.message.toLowerCase()
@@ -70,6 +73,22 @@ export function NetworkSwitcher() {
           Arc Testnet
         </Button>
       </div>
+      {chainId === arcTestnet.id && (
+        <div className="rounded-control border border-line bg-surface-subtle p-3">
+          <p className="text-support font-medium text-ink">Need test USDC?</p>
+          <p className="mt-1 text-support text-ink-soft">
+            Get 20 testnet USDC from Circle's faucet. The faucet limit is one request every 2 hours per address and network.
+          </p>
+          <a
+            href={ARC_TESTNET_FAUCET_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-flex min-h-9 items-center gap-1.5 text-support font-semibold text-brand-blue underline-offset-4 hover:underline"
+          >
+            Get test USDC <ExternalLink className="size-4" aria-hidden />
+          </a>
+        </div>
+      )}
       {isPending && <p className="text-support text-ink-soft">Switching network… confirm in your wallet. If the network is new, approve adding it.</p>}
       {errorMessage && <p className="text-support text-danger">{errorMessage}</p>}
       {!isSupportedChain(chainId) && (
