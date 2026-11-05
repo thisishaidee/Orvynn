@@ -1,4 +1,4 @@
-import { Activity, Bot, BookOpen, Droplets, ExternalLink, HelpCircle, KeyRound, LayoutDashboard, Settings, Wallet } from 'lucide-react'
+import { Activity, Bot, BookOpen, Droplets, ExternalLink, KeyRound, LayoutDashboard, Settings, Wallet } from 'lucide-react'
 import { arcTestnet } from 'viem/chains'
 import { AppShell, type NavItem } from '@/components/layout/AppShell'
 import { WalletButton } from '@/components/layout/WalletButton'
@@ -92,14 +92,9 @@ export default function App() {
           {chainId === arcTestnet.id ? 'Arc Testnet selected.' : 'Switch to Arc Testnet before requesting test USDC.'}
         </p>
       </div>
-      <div className="flex items-center justify-between px-1">
-        <button type="button" onClick={() => navigate('docs')} className="inline-flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white">
-          <BookOpen className="size-3.5" aria-hidden /> Documentation
-        </button>
-        <a href="mailto:support@orvynn.xyz" className="inline-flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white">
-          <HelpCircle className="size-3.5" aria-hidden /> Help
-        </a>
-      </div>
+      <button type="button" onClick={() => navigate('docs')} className="inline-flex items-center gap-1.5 px-1 text-xs text-white/60 transition-colors hover:text-white">
+        <BookOpen className="size-3.5" aria-hidden /> Documentation &amp; help
+      </button>
     </div>
   )
 
