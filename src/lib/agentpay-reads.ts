@@ -156,9 +156,9 @@ async function discoverLeases(
 
   if (matching.length === 0) return []
 
-  const ids = matching.map(({ id }) => id)
+  const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
   const allowedByLease = new Map<string, Map<string, boolean>>()
-  if (includeAllowlistHistory) {
+  if (includeAllowlistHistory && ids.length > 0) {
     const allowlistLogs = await getLogsChunked(client, {
       address: contract,
       event: eventAbi('AllowlistUpdated') as never,
@@ -430,7 +430,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
   const query = useQuery({
     queryKey: ['agentpay', 'activity', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none', leases.map((l) => l.id).join(',')],
     enabled: gate.ok && leasesReady,
-    staleTime: 15_000,
+    staleTime: 60_000,
     gcTime: 5 * 60_000,
     retry: 1,
     queryFn: () => {
