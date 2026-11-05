@@ -117,6 +117,7 @@ export function LeasesPage() {
       key: 'actions',
       header: 'Actions',
       align: 'right',
+      mobileFullWidth: true,
       cell: ({ lease, archived }) => (
         <span className="inline-flex flex-wrap justify-end gap-2">
           <Button size="sm" variant="secondary" onClick={() => setSelectedId(lease.id)}>View</Button>
