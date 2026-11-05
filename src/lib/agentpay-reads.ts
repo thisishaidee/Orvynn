@@ -322,12 +322,12 @@ export function useOwnerLeases(): DataSource<Lease> {
   const query = useQuery({
     queryKey: ['agentpay', 'leases', gate.ok ? gate.chainId : 0, gate.ok ? gate.contract : 'none', gate.ok ? gate.address : 'none'],
     enabled: gate.ok,
-    staleTime: 60_000,
+    staleTime: 0,
     gcTime: 5 * 60_000,
     retry: 1,
     // Render the last known lease snapshot immediately; it is never used to authorise a transaction.
     initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
-    initialDataUpdatedAt: Date.now(),
+    initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
       return discoverLeases(gate.client, gate.contract, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))

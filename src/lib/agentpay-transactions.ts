@@ -64,12 +64,13 @@ export function useAgentPayTransactions() {
     if (receipt.status !== 'success') {
       throw new Error(`Transaction ${hash} was mined but reverted.`)
     }
-    // The receipt is the confirmation boundary. Refresh dashboard data in the
-    // background so the wallet flow does not remain blocked by follow-up reads.
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'] }),
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'] }),
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'] }),
+    // Wait for active dashboard queries to revalidate before reporting the
+    // action complete. This keeps newly created leases and updated balances
+    // in sync without requiring the user to reload the page.
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
+      queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'], refetchType: 'active' }),
+      queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
     ]).catch(() => undefined)
     return { hash, blockNumber: receipt.blockNumber }
   }, [publicClient, queryClient])
