@@ -159,7 +159,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
       </aside>
 
       <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center justify-between border-b border-white/10 bg-brand-navy bg-navy-gradient px-4 pt-[env(safe-area-inset-top)] text-white md:hidden">
-        <BrandMark className="min-w-0 text-white" />
+        <BrandMark showName={false} className="text-white sm:hidden" /><BrandMark className="hidden text-white sm:flex" />
         <div className="flex shrink-0 items-center gap-2">
           {topBarActions && <div>{actions('dark')}</div>}
           <button
@@ -180,7 +180,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
           type="button"
           aria-label="Close navigation menu"
           onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 bg-[#101D35]/45 backdrop-blur-[2px] md:hidden"
+          className="fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-40 bg-[#081326]/75 backdrop-blur-sm md:hidden"
         />
       )}
       <aside
@@ -188,7 +188,7 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
         aria-label="Mobile navigation"
         aria-hidden={!mobileMenuOpen}
         className={cn(
-          'fixed bottom-0 left-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-50 w-[min(18rem,86vw)] overflow-y-auto overscroll-contain border-r border-white/10 bg-brand-navy bg-navy-gradient text-white shadow-2xl transition-transform duration-300 ease-out md:hidden',
+          'fixed bottom-0 left-0 top-[calc(3.5rem+env(safe-area-inset-top))] z-50 w-[min(19rem,88vw)] overflow-y-auto overscroll-contain border-r border-white/10 bg-brand-navy bg-navy-gradient text-white shadow-2xl transition-transform duration-300 ease-out md:hidden',
           mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full pointer-events-none',
         )}
       >
