@@ -82,6 +82,7 @@ function SidebarContent({ nav, activeId, onNavigate, footer }: SidebarContentPro
           </a>
           {footer}
         </div>
+        <p className="mt-3 px-1 text-[10px] leading-4 text-white/40">© 2026 Orvynn. All rights reserved.</p>
       </div>
     </div>
   )
