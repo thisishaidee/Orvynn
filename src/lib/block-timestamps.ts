@@ -7,7 +7,7 @@
  */
 import type { PublicClient } from 'viem'
 
-const CACHE_TTL_MS = 30_000
+const CACHE_TTL_MS = 60 * 60 * 1_000
 const MAX_CACHE_ENTRIES = 5_000
 const caches = new WeakMap<PublicClient, Map<string, { timestamp: number; expiresAt: number }>>()
 const inFlight = new WeakMap<PublicClient, Map<string, Promise<number | undefined>>>()
@@ -65,7 +65,7 @@ export async function getBlockTimestamps(
 ): Promise<Map<string, number>> {
   const unique = [...new Set(blocks.map((block) => block.toString()))]
   const result = new Map<string, number>()
-  const concurrency = 6
+  const concurrency = 12
 
   for (let offset = 0; offset < unique.length; offset += concurrency) {
     const batch = unique.slice(offset, offset + concurrency)
