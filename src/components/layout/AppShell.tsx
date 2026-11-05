@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ArrowUpRight, Github, Menu, X, BookOpen, type LucideIcon } from 'lucide-react'
+import { ArrowUpRight, Github, Menu, X, BookOpen, Droplets, ExternalLink, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { BRAND } from '@/lib/brand'
 
@@ -55,7 +55,35 @@ function SidebarContent({ nav, activeId, onNavigate, footer }: SidebarContentPro
           })}
         </ul>
       </nav>
-      {footer && <div className="shrink-0 border-t border-white/10 p-3">{footer}</div>}
+      <div className="mt-auto shrink-0 border-t border-white/10 px-3 pb-5 pt-5">
+        <div className="rounded-xl border border-white/10 bg-white/[0.06] p-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Droplets className="size-4 text-[#A9CCFF]" aria-hidden />
+            Testnet tools
+          </div>
+          <p className="mt-2 text-xs leading-5 text-brand-pale">
+            Need test USDC? Switch your wallet to Arc Testnet, then get test funds from Circle.
+          </p>
+          <a
+            href="https://faucet.circle.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="focus-ring-dark mt-3 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-control bg-white px-3 text-xs font-semibold text-brand-navy transition-colors hover:bg-[#EAF2FC]"
+          >
+            <Droplets className="size-4" aria-hidden />
+            Get test USDC
+            <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        </div>
+        <div className="mt-6 flex items-center justify-between px-1">
+          <a href="/docs" className="inline-flex items-center gap-1.5 text-xs text-brand-pale transition-colors hover:text-white">
+            <BookOpen className="size-3.5" aria-hidden />
+            Documentation
+          </a>
+          {footer}
+        </div>
+        <p className="mt-3 px-1 text-[10px] leading-4 text-white/40">© 2026 Orvynn. All rights reserved.</p>
+      </div>
     </div>
   )
 }
@@ -116,6 +144,17 @@ export function AppShell({ nav, activeId, onNavigate, sidebarFooter, topBarActio
             </ul>
           </nav>
           {sidebarFooter && <div className="hidden shrink-0 border-t border-white/10 p-3 lg:block">{sidebarFooter}</div>}
+          <div className="shrink-0 border-t border-white/10 px-2 pb-4 pt-4 lg:px-3">
+            <a href="/docs" aria-label="Documentation" title="Documentation"
+              className="focus-ring-dark flex min-h-10 items-center justify-center gap-2 rounded-control px-2 text-xs text-brand-pale transition-colors hover:bg-white/5 hover:text-white lg:justify-start lg:px-3">
+              <BookOpen className="size-4 shrink-0" aria-hidden />
+              <span className="hidden lg:inline">Documentation</span>
+            </a>
+            <p className="mt-3 text-center text-[9px] leading-4 text-white/40 lg:text-left lg:px-3">
+              <span className="lg:hidden">© 2026</span>
+              <span className="hidden lg:inline">© 2026 Orvynn. All rights reserved.</span>
+            </p>
+          </div>
         </div>
       </aside>
 
