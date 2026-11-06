@@ -64,10 +64,10 @@ export function useAgentPayTransactions() {
     if (receipt.status !== 'success') {
       throw new Error(`Transaction ${hash} was mined but reverted.`)
     }
-    // Wait for active dashboard queries to revalidate before reporting the
-    // action complete. This keeps newly created leases and updated balances
-    // in sync without requiring the user to reload the page.
-    await Promise.all([
+    // A successful receipt is the transaction completion point. Refresh dashboard
+    // data in the background so slow activity/history reads do not keep the
+    // wallet action spinner running after Arc has already confirmed the write.
+    void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
       queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'], refetchType: 'active' }),
       queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
