@@ -172,16 +172,20 @@ async function discoverLeases(
   let fundingHistoryAvailable = true
   if (zeroBalanceIds.length > 0) {
     try {
-      const deposits = await getLogsChunked(client, {
-        address: contract,
-        event: eventAbi('Deposited') as never,
-        args: { leaseId: zeroBalanceIds },
-        fromBlock,
-        toBlock: snapshot,
-      })
-      for (const log of deposits) {
-        const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
-        if (leaseId !== undefined) fundedLeaseIds.add(leaseId.toString())
+      // Keep indexed lease-ID OR filters bounded for RPC providers with
+      // conservative topic-list limits.
+      for (let offset = 0; offset < zeroBalanceIds.length; offset += 100) {
+        const deposits = await getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('Deposited') as never,
+          args: { leaseId: zeroBalanceIds.slice(offset, offset + 100) },
+          fromBlock,
+          toBlock: snapshot,
+        })
+        for (const log of deposits) {
+          const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
+          if (leaseId !== undefined) fundedLeaseIds.add(leaseId.toString())
+        }
       }
     } catch {
       fundingHistoryAvailable = false
