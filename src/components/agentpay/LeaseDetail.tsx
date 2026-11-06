@@ -103,6 +103,7 @@ export function LeaseDetail({ lease, onClose }: { lease?: Lease; onClose?: () =>
     try {
       const result = await tx.deposit(BigInt(lease.id), depositUnits)
       toast.success('Lease funded', { description: result.hash })
+      walletBalance.refetch()
       closeAction()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'The deposit failed.'
@@ -142,6 +143,7 @@ export function LeaseDetail({ lease, onClose }: { lease?: Lease; onClose?: () =>
     try {
       const result = await tx.withdraw(BigInt(lease.id))
       toast.success('Lease funds withdrawn', { description: result.hash })
+      walletBalance.refetch()
       setWithdrawOpen(false)
     } catch (cause) {
       toast.error('Could not withdraw funds', { description: cause instanceof Error ? cause.message : 'The withdrawal failed.' })
