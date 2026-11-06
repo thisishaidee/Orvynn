@@ -1,7 +1,10 @@
 import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon } from 'lucide-react'
 import { useAccount } from 'wagmi'
+import { Copy } from 'lucide-react'
+import { toast } from 'sonner'
 import { Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
+import { copyToClipboard } from '@/lib/clipboard'
 import { SourceEmpty } from '@/components/agentpay/SourceEmpty'
 import {
   ACTIVITY_LABELS,
@@ -23,7 +26,14 @@ const columns: Column<ActivityItem>[] = [
     cell: (a) => (
       <span className="flex flex-col">
         <span className="num font-mono text-support" title={a.agent}>{a.agent ? shortAddress(a.agent) : 'Not available'}</span>
-        <span className="text-support text-ink-soft">Lease {a.leaseId}</span>
+        <button
+          type="button"
+          onClick={() => void copyToClipboard(a.leaseId).then(() => toast.success(`Lease ID ${a.leaseId} copied`)).catch(() => toast.error('Could not copy lease ID'))}
+          className="mt-0.5 inline-flex min-h-8 w-fit items-center gap-1.5 text-support text-brand-blue"
+          aria-label={`Copy lease ID ${a.leaseId}`}
+        >
+          Lease {a.leaseId}<Copy className="size-3" aria-hidden />
+        </button>
       </span>
     ),
   },
