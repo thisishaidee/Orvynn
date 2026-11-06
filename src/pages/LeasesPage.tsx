@@ -156,10 +156,10 @@ export function LeasesPage() {
         actions={<Button iconLeft={<Plus className="size-4" aria-hidden />} onClick={() => setCreateOpen(true)}>Create lease</Button>}
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total leases" value={ready ? withStatus.length : 0} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
-        <StatCard label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : 0} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
-        <StatCard label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : 0} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
-        <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : 0} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
+        <StatCard loading={source.state === "loading"} label="Total leases" value={ready ? withStatus.length : 0} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
+        <StatCard loading={source.state === "loading"} label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : 0} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
+        <StatCard loading={source.state === "loading"} label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : 0} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
+        <StatCard loading={source.state === "loading"} label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : 0} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
       {source.refreshError && (
