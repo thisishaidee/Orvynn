@@ -40,10 +40,32 @@ export function DataTable<T>({ columns, rows, getRowId, caption, loading, error,
   if (error) return <ErrorState title="Could not load data" message={error} onRetry={onRetry} />
   if (loading) {
     return (
-      <div className="space-y-3 p-4" role="status" aria-label={`Loading ${caption}`}>
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-12 w-full" />
-        ))}
+      <div role="status" aria-label={`Loading ${caption}`}>
+        <div className="hidden space-y-4 p-4 md:block">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="grid grid-cols-5 gap-4 border-b border-line pb-4">
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="h-8 w-24 justify-self-end" />
+            </div>
+          ))}
+        </div>
+        <ul className="divide-y divide-line md:hidden" aria-hidden>
+          {[0, 1, 2].map((i) => (
+            <li key={i} className="space-y-3 px-4 py-4">
+              <Skeleton className="h-5 w-36" />
+              <div className="grid grid-cols-2 gap-3">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-full" />
+              </div>
+              <Skeleton className="h-9 w-28" />
+            </li>
+          ))}
+        </ul>
       </div>
     )
   }
