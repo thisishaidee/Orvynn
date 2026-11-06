@@ -98,9 +98,11 @@ describe('Arc RPC error classification', () => {
     expect(isRangeLimitError(error)).toBe(false)
   })
 
-  test('recognises HTTP 429 throttling responses', () => {
+  test('recognises HTTP 429 throttling responses, including status-only errors', () => {
     expect(isRateLimitError({ status: 429, message: 'Too many requests' })).toBe(true)
     expect(isRangeLimitError({ status: 429, message: 'Too many requests' })).toBe(false)
+    expect(isRateLimitError({ status: 429 })).toBe(true)
+    expect(isRangeLimitError({ status: 429 })).toBe(false)
   })
 
   test('keeps explicit block-range errors eligible for adaptive splitting', () => {
