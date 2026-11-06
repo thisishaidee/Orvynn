@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Address, PublicClient } from 'viem'
 import { activityAgent, currentPeriodSpent, currentWindowIndex } from '../src/lib/agentpay-accounting'
 import { getLogsChunked, isRateLimitError, isRangeLimitError } from '../src/lib/agentpay-logs'
-import { leaseStatus } from '../src/lib/agentpay'
+import { leaseStatus } from '../src/lib/lease-status'
 
 const DELEGATE = '0x1111111111111111111111111111111111111111' as Address
 const OWNER = '0x2222222222222222222222222222222222222222' as Address
