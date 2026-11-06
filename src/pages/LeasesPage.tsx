@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { Archive, ArchiveRestore, KeyRound, Plus, ShieldCheck, Clock3, WalletCards } from 'lucide-react'
+import { Archive, ArchiveRestore, Copy, KeyRound, Plus, ShieldCheck, Clock3, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, Card, CardHeader, ConfirmDialog, DataTable, Notice, PageHeader, ProgressBar, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { LeaseDetail } from '@/components/agentpay/LeaseDetail'
@@ -19,6 +19,7 @@ import {
 } from '@/lib/agentpay'
 import { cn } from '@/lib/cn'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { copyToClipboard } from '@/lib/clipboard'
 
 type Filter = 'all' | LeaseStatus | 'archived'
 const FILTERS: { id: Filter; label: string }[] = [
@@ -39,7 +40,7 @@ export function LeasesPage() {
   const storageKey = archiveStorageKey(chainId, address)
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => new Set())
   const [filter, setFilter] = useState<Filter>('all')
-  const [selectedId, setSelectedId] = useState<string | undefined>()
+  const [openLeaseIds, setOpenLeaseIds] = useState<string[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<Lease | undefined>()
   const [revoking, setRevoking] = useState(false)
@@ -61,9 +62,23 @@ export function LeasesPage() {
 
   const withStatus = useMemo(() => source.items.map((lease) => ({ lease, status: leaseStatus(lease), archived: archivedIds.has(lease.id) })), [source.items, archivedIds])
   const rows = withStatus.filter((r) => filter === 'archived' ? r.archived : !r.archived && (filter === 'all' || r.status === filter))
-  const selected = source.items.find((l) => l.id === selectedId)
   const ready = source.state === 'ready'
   const count = (f: Filter) => (ready ? String(withStatus.filter((r) => f === 'archived' ? r.archived : !r.archived && (f === 'all' || r.status === f)).length) : '0')
+
+  const openLeaseDetails = (leaseId: string) => {
+    setOpenLeaseIds((current) => {
+      if (current.includes(leaseId)) return current
+      if (current.length >= 2) {
+        toast.info('Close one lease detail before opening another.')
+        return current
+      }
+      return [...current, leaseId]
+    })
+  }
+
+  const closeLeaseDetails = (leaseId: string) => {
+    setOpenLeaseIds((current) => current.filter((id) => id !== leaseId))
+  }
 
   const setArchived = (lease: Lease, archived: boolean) => {
     if (!storageKey) {
@@ -120,7 +135,8 @@ export function LeasesPage() {
       mobileFullWidth: true,
       cell: ({ lease, archived }) => (
         <span className="inline-flex flex-wrap justify-end gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setSelectedId(lease.id)}>View</Button>
+          <Button size="sm" variant="secondary" onClick={() => openLeaseDetails(lease.id)}>View</Button>
+          <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(lease.id).then(() => toast.success(`Lease ID ${lease.id} copied`)).catch(() => toast.error("Could not copy lease ID"))} aria-label={`Copy lease ID ${lease.id}`}><Copy className="size-3.5" aria-hidden /> Copy ID</Button>
           <Button size="sm" variant="secondary" onClick={() => setArchived(lease, !archived)}>
             {archived ? <ArchiveRestore className="size-3.5" aria-hidden /> : <Archive className="size-3.5" aria-hidden />}
             {archived ? 'Restore' : 'Archive'}
@@ -154,7 +170,7 @@ export function LeasesPage() {
           </span>
         </Notice>
       )}
-      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setSelectedId(undefined)} />
+      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setOpenLeaseIds([])} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
         title="Revoke this lease?"
@@ -220,12 +236,23 @@ export function LeasesPage() {
 
       <section aria-labelledby="lease-detail-heading" className="space-y-3">
         <div>
-          <h2 id="lease-detail-heading" className="text-section">Lease detail</h2>
+          <h2 id="lease-detail-heading" className="text-section">Lease details</h2>
           <p className="text-support text-ink-soft">
-            {selected ? 'Permissions and actions for the selected lease.' : 'Layout preview. Values appear here when you select a lease.'}
+            {openLeaseIds.length > 0
+              ? `${openLeaseIds.length} of 2 lease detail views open. Close a view before opening another when both are in use.`
+              : 'Open a lease to inspect its permissions, balance and actions.'}
           </p>
         </div>
-        <LeaseDetail lease={selected} />
+        {openLeaseIds.length === 0 ? (
+          <LeaseDetail />
+        ) : (
+          <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+            {openLeaseIds.map((id) => {
+              const lease = source.items.find((item) => item.id === id)
+              return lease ? <LeaseDetail key={id} lease={lease} onClose={() => closeLeaseDetails(id)} /> : null
+            })}
+          </div>
+        )}
       </section>
     </div>
   )
