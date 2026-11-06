@@ -137,7 +137,7 @@ export function useAgentPayTransactions() {
       account,
     })
     return waitForSuccess(hash)
-  }, [assertReady, getUsdcAllowance, walletClient, waitForSuccess])
+  }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess])
 
   const deposit = useCallback(async (leaseId: bigint, amount: bigint): Promise<TransactionResult> => {
     if (leaseId < 0n || amount <= 0n) throw new Error('Lease ID and deposit amount are invalid.')
@@ -163,7 +163,7 @@ export function useAgentPayTransactions() {
       account,
     })
     return waitForSuccess(hash)
-  }, [assertReady, getUsdcAllowance, walletClient, waitForSuccess])
+  }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess])
 
   const setAllowlist = useCallback(async (leaseId: bigint, recipient: Address, allowed: boolean): Promise<TransactionResult> => {
     if (leaseId < 0n) throw new Error('Lease ID is invalid.')
