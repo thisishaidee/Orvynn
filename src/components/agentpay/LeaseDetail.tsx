@@ -1,10 +1,12 @@
 import { useState } from 'react'
+import { Copy, X } from 'lucide-react'
 import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
 import { Button, Card, CardHeader, ConfirmDialog, Field, Input, Modal, Notice, ProgressBar, Select, StatusBadge } from '@/components/ui'
 import { InfoList, InfoRow, SupportChips } from '@/components/agentpay/Notices'
 import { formatDateTime, formatPeriod, formatUsdc, leaseStatus, remainingAllowance, shortAddress, type Lease } from '@/lib/agentpay'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { copyToClipboard } from '@/lib/clipboard'
 
 const Dash = () => <span className="text-ink-mute" aria-label="Not available">—</span>
 
@@ -48,7 +50,7 @@ export function PermissionsSection({ lease }: { lease?: Lease }) {
   )
 }
 
-export function LeaseDetail({ lease }: { lease?: Lease }) {
+export function LeaseDetail({ lease, onClose }: { lease?: Lease; onClose?: () => void }) {
   const tx = useAgentPayTransactions()
   const status = lease ? leaseStatus(lease) : undefined
   const remaining = lease && status ? remainingAllowance(lease, status) : undefined
@@ -61,6 +63,16 @@ export function LeaseDetail({ lease }: { lease?: Lease }) {
   const [revokeOpen, setRevokeOpen] = useState(false)
   const [withdrawOpen, setWithdrawOpen] = useState(false)
   const [error, setError] = useState('')
+
+  const copyLeaseId = async () => {
+    if (!lease) return
+    try {
+      await copyToClipboard(lease.id)
+      toast.success(`Lease ID ${lease.id} copied`)
+    } catch (cause) {
+      toast.error('Could not copy lease ID', { description: cause instanceof Error ? cause.message : 'Select and copy the ID manually.' })
+    }
+  }
 
   const closeAction = () => {
     if (busy) return
@@ -137,7 +149,19 @@ export function LeaseDetail({ lease }: { lease?: Lease }) {
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader title={lease ? `Lease ${lease.id}` : 'No lease selected'} description={lease ? <>Agent <span className="num font-mono">{shortAddress(lease.delegate)}</span></> : 'Select a lease from the list to see its details.'} action={status ? <StatusBadge status={status} /> : undefined} />
+        <CardHeader
+          title={lease ? `Lease ${lease.id}` : 'No lease selected'}
+          description={lease ? <>Agent <span className="num font-mono">{shortAddress(lease.delegate)}</span></> : 'Select a lease from the list to see its details.'}
+          action={lease ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {status && <StatusBadge status={status} />}
+              <Button size="sm" variant="secondary" onClick={() => void copyLeaseId()}>
+                <Copy className="size-3.5" aria-hidden /> Copy ID
+              </Button>
+              {onClose && <Button size="sm" variant="ghost" onClick={onClose}><X className="size-3.5" aria-hidden /> Close</Button>}
+            </div>
+          ) : undefined}
+        />
         {lease ? (
           <div className="grid gap-4 sm:grid-cols-3">
             <div><p className="text-label text-ink-soft">Spent this period</p><p className="num mt-1 text-figure-sm">{formatUsdc(lease.spentThisPeriod)} USDC</p></div>
