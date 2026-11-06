@@ -41,14 +41,13 @@ export function OverviewPage({ onNavigate }: { onNavigate: (page: PageId) => voi
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="USDC balance"
-          value={balance.state === 'ready' ? balance.formatted : undefined}
+          value={balance.formatted ?? '0.00'}
           unit="USDC"
-          loading={balance.state === 'loading'}
           hint={balance.state === 'unsupported-network' ? 'Switch to Arc to read your balance.' : balance.state === 'error' ? 'Balance could not be loaded.' : 'Wallet balance on the connected Arc network.'}
         />
-        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : undefined} loading={leases.state === 'loading'} hint="Permissions created from this wallet" />
-        <StatCard label="Active leases" value={activeLeaseCount} loading={leases.state === 'loading'} hint="Currently within their rules" />
-        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : undefined} loading={activity.state === 'loading'} hint="Events read from the contract" />
+        <StatCard label="Leases" value={leases.state === 'ready' ? leases.items.length : 0} hint="Permissions created from this wallet" />
+        <StatCard label="Active leases" value={activeLeaseCount ?? 0} hint="Currently within their rules" />
+        <StatCard label="Activity events" value={activity.state === 'ready' ? activity.items.length : 0} hint="Events read from the contract" />
       </div>
       {(balance.state === 'error' || leases.state === 'error' || activity.state === 'error') && (
         <Notice tone="danger" title="Some information could not be loaded">
