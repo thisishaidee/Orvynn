@@ -107,4 +107,16 @@ describe('Arc RPC error classification', () => {
     expect(isRangeLimitError(error)).toBe(true)
     expect(isRateLimitError(error)).toBe(false)
   })
+
+  test('recognises Arc request-limit wording as a splittable range limit', () => {
+    const error = new Error('Request exceeds defined limit')
+    expect(isRangeLimitError(error)).toBe(true)
+    expect(isRateLimitError(error)).toBe(false)
+  })
+
+  test('does not split Arc requests when the same response identifies throttling', () => {
+    const error = new Error('Request exceeds defined limit. Details: rate limit exceeded')
+    expect(isRateLimitError(error)).toBe(true)
+    expect(isRangeLimitError(error)).toBe(false)
+  })
 })
