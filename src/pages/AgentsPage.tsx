@@ -62,9 +62,9 @@ export function AgentsPage() {
         actions={<a href="/?page=leases" className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-brand-navy px-5 text-sm font-medium text-white shadow-card transition hover:bg-brand-blue focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-blue">Create a lease <ArrowRight className="size-4" aria-hidden /></a>}
       />
       <div className="grid gap-3 sm:grid-cols-3">
-        <StatCard label="Agents identified" value={source.state === 'ready' ? agents.length : 0} icon={<Bot className="size-4" />} hint="Unique delegate wallets" />
-        <StatCard label="Active agents" value={source.state === 'ready' ? agents.filter((a) => a.canSpend).length : 0} icon={<Activity className="size-4" />} hint="With an active lease" />
-        <StatCard label="Leases assigned" value={source.state === 'ready' ? source.items.length : 0} icon={<WalletCards className="size-4" />} hint="Across all delegate wallets" />
+        <StatCard loading={source.state === "loading"} label="Agents identified" value={source.state === 'ready' ? agents.length : 0} icon={<Bot className="size-4" />} hint="Unique delegate wallets" />
+        <StatCard loading={source.state === "loading"} label="Active agents" value={source.state === 'ready' ? agents.filter((a) => a.canSpend).length : 0} icon={<Activity className="size-4" />} hint="With an active lease" />
+        <StatCard loading={source.state === "loading"} label="Leases assigned" value={source.state === 'ready' ? source.items.length : 0} icon={<WalletCards className="size-4" />} hint="Across all delegate wallets" />
       </div>
       <NotConnectedNotice subject="Agents" />
 
