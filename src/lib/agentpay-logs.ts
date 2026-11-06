@@ -94,7 +94,7 @@ export function isRateLimitError(error: unknown): boolean {
   if (/request exceeds (the )?defined limit|request size exceeds|limit on (the )?request/.test(detail)) {
     return false
   }
-  return /rate limit|too many requests|\\b429\\b|throttl|request limit exceeded/.test(detail)
+  return /rate limit|too many requests|\b429\b|throttl|request limit exceeded/.test(detail)
 }
 
 function wait(ms: number): Promise<void> {
