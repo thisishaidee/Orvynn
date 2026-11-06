@@ -115,6 +115,16 @@ export function useAgentPayTransactions() {
     }
     const { contract, account } = assertReady()
     if (args.initialDeposit > 0n) {
+      if (!publicClient) throw new Error('The Arc network client is unavailable.')
+      const walletBalance = await publicClient.readContract({
+        address: ARC_USDC_ADDRESS,
+        abi: erc20Abi,
+        functionName: 'balanceOf',
+        args: [account],
+      })
+      if (walletBalance < args.initialDeposit) {
+        throw new Error(`Insufficient wallet USDC balance. Available: ${formatUnits(walletBalance, 6)} USDC; required: ${formatUnits(args.initialDeposit, 6)} USDC.`)
+      }
       const allowance = await getUsdcAllowance()
       if (allowance < args.initialDeposit) throw new Error('USDC approval is insufficient. Approve the exact initial deposit first, wait for confirmation, then submit lease creation.')
     }
@@ -132,6 +142,16 @@ export function useAgentPayTransactions() {
   const deposit = useCallback(async (leaseId: bigint, amount: bigint): Promise<TransactionResult> => {
     if (leaseId < 0n || amount <= 0n) throw new Error('Lease ID and deposit amount are invalid.')
     const { contract, account } = assertReady()
+    if (!publicClient) throw new Error('The Arc network client is unavailable.')
+    const walletBalance = await publicClient.readContract({
+      address: ARC_USDC_ADDRESS,
+      abi: erc20Abi,
+      functionName: 'balanceOf',
+      args: [account],
+    })
+    if (walletBalance < amount) {
+      throw new Error(`Insufficient wallet USDC balance. Available: ${formatUnits(walletBalance, 6)} USDC; required: ${formatUnits(amount, 6)} USDC.`)
+    }
     const allowance = await getUsdcAllowance()
     if (allowance < amount) throw new Error('USDC approval is insufficient. Approve the exact deposit amount first, wait for confirmation, then submit the deposit.')
     if (!walletClient) throw new Error('The wallet client is unavailable.')
