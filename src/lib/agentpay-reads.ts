@@ -84,26 +84,29 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Lease IDs are sequential and the contract exposes nextLeaseId. Enumerate
-  // current storage directly instead of scanning every historical LeaseCreated log.
+  // Discover only leases belonging to this wallet from indexed LeaseCreated
+  // events. This avoids the global nextLeaseId() eth_call, which Arc Testnet
+  // may throttle, and avoids enumerating unrelated leases for every wallet.
   const snapshot = await client.getBlockNumber()
-  const [latest, nextLeaseId] = await Promise.all([
-    client.getBlock({ blockNumber: snapshot }),
-    client.readContract({
-      address: contract,
-      abi: agentPayAbi,
-      functionName: 'nextLeaseId',
-      blockNumber: snapshot,
-    }),
-  ])
+  const latest = await client.getBlock({ blockNumber: snapshot })
+  const createdLogs = await getLogsChunked(client, {
+    address: contract,
+    event: eventAbi('LeaseCreated'),
+    args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
+    fromBlock,
+    toBlock: snapshot,
+  })
+  const leaseIds = [...new Set(createdLogs
+    .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId?.toString())
+    .filter((id): id is string => id !== undefined))]
+    .map((id) => BigInt(id))
+    .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
 
-  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
-    const ids = Array.from(
-      { length: Number(nextLeaseId - first > BigInt(batchSize) ? BigInt(batchSize) : nextLeaseId - first) },
-      (_, index) => first + BigInt(index),
-    )
+  for (let offset = 0; offset < leaseIds.length; offset += batchSize) {
+    const ids = leaseIds.slice(offset, offset + batchSize)
     const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
