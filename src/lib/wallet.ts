@@ -48,8 +48,8 @@ export function useUsdcBalance(): { state: BalanceState; formatted?: string; ref
   })
 
   if (!isConnected || !address) return { state: 'disconnected', refetch: () => void refetch() }
-  if (!onArc) return { state: 'unsupported-network', refetch: () => void refetch() }
-  if (isError) return { state: 'error', refetch: () => void refetch() }
+  if (!onArc) return { state: 'unsupported-network', formatted: '0.00', refetch: () => void refetch() }
+  if (isError) return { state: 'error', formatted: '0.00', refetch: () => void refetch() }
   if (isPending || data === undefined) return { state: 'loading', refetch: () => void refetch() }
   // USDC has six on-chain decimals; show the wallet balance to two decimal places.
   // Round at the cent boundary using bigint arithmetic to avoid floating-point precision loss.
