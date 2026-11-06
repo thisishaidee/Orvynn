@@ -17,7 +17,7 @@ import {
 } from 'viem'
 import { agentPayAbi } from '@/lib/agentpay-abi'
 
-const INITIAL_CHUNK = 100_000n
+const INITIAL_CHUNK = 10_000n
 const MIN_CHUNK = 1n
 const MAX_RPC_REQUESTS = 10_000
 const CONCURRENCY = 3
@@ -86,7 +86,7 @@ export function isRateLimitError(error: unknown): boolean {
     }
   }
 
-  return /rate limit|too many requests|\b429\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
+  return /rate limit|too many requests|\\b429\\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
 }
 
 function wait(ms: number): Promise<void> {
@@ -128,7 +128,7 @@ export function isRangeLimitError(error: unknown): boolean {
   // Never recursively split a rate-limited request: that multiplies traffic.
   if (/rate limit|too many requests|429|throttl/.test(detail)) return false
   return (
-    /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range/.test(detail)
+    /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range|request exceeds (the )?defined limit|request size exceeds|limit on (the )?request/.test(detail)
     || /(?:^|\s)413(?:\s|$)/.test(detail)
   )
 }
