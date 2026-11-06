@@ -53,7 +53,7 @@ type LeaseTuple = readonly [
   Address, Address, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean,
 ]
 
-function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[] | undefined, nowSeconds: bigint): Lease {
+function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[] | undefined, everFunded: boolean | null, nowSeconds: bigint): Lease {
   return {
     id: id.toString(),
     owner: row[0],
@@ -69,6 +69,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
       spentThisWindow: row[7],
     }),
     balance: row[8],
+    everFunded,
     allowlistEnabled: row[9],
     revoked: row[10],
     ...(allowed !== undefined ? { allowedRecipients: allowed } : {}),
@@ -160,6 +161,30 @@ async function discoverLeases(
 
   if (matching.length === 0) return []
 
+  // A zero balance alone cannot tell us whether a lease was never funded,
+  // fully spent, or withdrawn. Verify deposit history only for zero-balance
+  // leases; a positive current balance is already conclusive.
+  const zeroBalanceIds = matching.filter(({ row }) => row[8] === 0n).map(({ id }) => id)
+  const fundedLeaseIds = new Set<string>()
+  let fundingHistoryAvailable = true
+  if (zeroBalanceIds.length > 0) {
+    try {
+      const deposits = await getLogsChunked(client, {
+        address: contract,
+        event: eventAbi('Deposited') as never,
+        args: { leaseId: zeroBalanceIds },
+        fromBlock,
+        toBlock: snapshot,
+      })
+      for (const log of deposits) {
+        const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
+        if (leaseId !== undefined) fundedLeaseIds.add(leaseId.toString())
+      }
+    } catch {
+      fundingHistoryAvailable = false
+    }
+  }
+
   const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
   const allowedByLease = new Map<string, Map<string, boolean>>()
   // Recipient history is supplemental display data. A failure to retrieve
@@ -194,7 +219,10 @@ async function discoverLeases(
         ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
         : []
       : undefined
-    return toLease(id, row, remaining, allowed, latest.timestamp)
+    const everFunded = row[8] > 0n || fundedLeaseIds.has(id.toString())
+      ? true
+      : fundingHistoryAvailable ? false : null
+    return toLease(id, row, remaining, allowed, everFunded, latest.timestamp)
   }).sort((a, b) => Number(b.id) - Number(a.id))
 }
 
