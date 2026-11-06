@@ -1,4 +1,5 @@
-import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon, Copy } from 'lucide-react'
+import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon, Copy, ExternalLink } from 'lucide-react'
+import { arc, arcTestnet } from 'viem/chains'
 import { useAccount } from 'wagmi'
 import { toast } from 'sonner'
 import { Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
@@ -17,7 +18,8 @@ import {
 
 const AMOUNT_EVENTS: ActivityType[] = ['Deposited', 'Spent', 'Withdrawn']
 
-const columns: Column<ActivityItem>[] = [
+function getColumns(explorerBase?: string): Column<ActivityItem>[] {
+  return [
   { key: 'type', header: 'Type', primary: true, cell: (a) => ACTIVITY_LABELS[a.type] },
   {
     key: 'who',
@@ -53,13 +55,28 @@ const columns: Column<ActivityItem>[] = [
   },
   { key: 'date', header: 'Date', cell: (a) => (a.timestamp ? formatDateTime(a.timestamp) : <span className="text-ink-mute">Unavailable</span>) },
   { key: 'status', header: 'Status', cell: (a) => <StatusBadge status={a.status === 'success' ? 'success' : a.status === 'failed' ? 'failed' : 'pending'} /> },
-]
+  {
+    key: 'explorer',
+    header: 'Transaction',
+    cell: (a) => explorerBase ? (
+      <a href={`${explorerBase}/tx/${a.txHash}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-support font-medium text-brand-blue hover:underline">
+        View on explorer <ExternalLink className="size-3.5" aria-hidden />
+      </a>
+    ) : <span className="text-ink-mute">Unavailable</span>,
+  },
+  ]
+}
 
 const TRACKED: ActivityType[] = ['LeaseCreated', 'Deposited', 'Spent', 'Revoked', 'Withdrawn', 'AllowlistUpdated']
 
 export function ActivityPage() {
-  const { isConnected } = useAccount()
+  const { isConnected, chainId } = useAccount()
   const source = useActivity()
+  const explorerBase = chainId === arc.id
+    ? arc.blockExplorers.default.url
+    : chainId === arcTestnet.id
+      ? arcTestnet.blockExplorers.default.url
+      : undefined
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -78,11 +95,11 @@ export function ActivityPage() {
 
       <Card padding="none" className="overflow-hidden">
         <div className="border-b border-line bg-gradient-to-r from-brand-mist/70 to-transparent p-4 sm:p-5 lg:p-6">
-          <CardHeader title="Transaction history" description="An on-chain record of lease funding, spending and permission changes." className="mb-0" />
+          <CardHeader title="Transaction history" description="Confirmed on-chain lease activity. Open any transaction in the Arc explorer to inspect its receipt and details." className="mb-0" />
         </div>
         <DataTable
           caption="Transaction history"
-          columns={columns}
+          columns={getColumns(explorerBase)}
           rows={source.items}
           getRowId={(a) => a.id}
           loading={source.state === 'loading'}
@@ -100,6 +117,8 @@ export function ActivityPage() {
           }
         />
       </Card>
+
+      <p className="text-support text-ink-soft">Rows here come from confirmed contract events, so they represent successful on-chain actions. Rejected wallet prompts and reverted transactions do not emit these events and are not included in this event history.</p>
 
       <Card tone="soft">
         <CardHeader title="What will be recorded" description="Each of these contract events becomes a row in the history." className="mb-3" />
