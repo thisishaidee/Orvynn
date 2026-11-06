@@ -36,6 +36,13 @@ function getWalletMetadata() {
 
 export const config = createConfig({
   multiInjectedProviderDiscovery: true,
+  // Arc's RPC has rejected automatic Multicall aggregation for unrelated reads
+  // (including nextLeaseId). Keep hook reads as direct eth_call requests; the
+  // lease discovery path uses its own explicitly bounded multicall batches.
+  batch: {
+    [arc.id]: { multicall: false },
+    [arcTestnet.id]: { multicall: false },
+  },
   chains: [arc, arcTestnet],
   connectors: [
     injected({ shimDisconnect: true }),
