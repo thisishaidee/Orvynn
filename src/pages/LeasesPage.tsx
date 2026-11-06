@@ -69,14 +69,12 @@ export function LeasesPage() {
   const count = (f: Filter) => (ready ? String(withStatus.filter((r) => f === 'archived' ? r.archived : !r.archived && (f === 'all' || r.status === f)).length) : '0')
 
   const openLeaseDetails = (leaseId: string) => {
-    setOpenLeaseIds((current) => {
-      if (current.includes(leaseId)) return current
-      if (current.length >= 2) {
-        toast.info('Close one lease detail before opening another.')
-        return current
-      }
-      return [...current, leaseId]
-    })
+    if (openLeaseIds.includes(leaseId)) return
+    if (openLeaseIds.length >= 2) {
+      toast.info('Close one lease detail before opening another.')
+      return
+    }
+    setOpenLeaseIds((current) => current.includes(leaseId) || current.length >= 2 ? current : [...current, leaseId])
   }
 
   const closeLeaseDetails = (leaseId: string) => {
