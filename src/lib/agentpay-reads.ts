@@ -96,7 +96,7 @@ async function discoverLeases(
     }),
   ])
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
-  const batchSize = 25
+  const batchSize = 5
 
   for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
     const ids = Array.from(
@@ -118,7 +118,11 @@ async function discoverLeases(
     } catch {
       // Some Arc RPC configurations may not expose Multicall3. Keep the
       // fallback bounded and read against the same block snapshot.
-      const rows = await Promise.all(ids.map(async (id) => {
+      // Do not fan out a failed Multicall into dozens of simultaneous RPC
+      // calls. Keep the fallback sequential by lease, with only the two
+      // independent reads for one lease running together.
+      const rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
+      for (const id of ids) {
         const [row, remaining] = await Promise.all([
           client.readContract({
             address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
@@ -127,8 +131,8 @@ async function discoverLeases(
             address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
           }) as Promise<bigint>,
         ])
-        return { id, row, remaining }
-      }))
+        rows.push({ id, row, remaining })
+      }
       for (const item of rows) {
         const matches = filter.owner
           ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
