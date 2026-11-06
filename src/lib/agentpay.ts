@@ -28,6 +28,8 @@ export interface Lease {
   spentThisPeriod: bigint
   /** USDC currently held by the lease. */
   balance: bigint
+  /** Whether any Deposited event exists for this lease; null when history could not be verified. */
+  everFunded?: boolean | null
   allowlistEnabled: boolean
   /** The contract can only answer "is X allowed"; this list is rebuilt from AllowlistUpdated events. */
   allowedRecipients?: Address[]
@@ -36,11 +38,15 @@ export interface Lease {
   onChainRemaining?: bigint
 }
 
-export type LeaseStatus = 'active' | 'expired' | 'revoked'
+export type LeaseStatus = 'active' | 'unfunded' | 'depleted' | 'unknown' | 'expired' | 'revoked'
 
-export function leaseStatus(lease: Pick<Lease, 'revoked' | 'expiry'>, nowSeconds = Math.floor(Date.now() / 1000)): LeaseStatus {
+export function leaseStatus(lease: Pick<Lease, 'revoked' | 'expiry' | 'balance' | 'everFunded'>, nowSeconds = Math.floor(Date.now() / 1000)): LeaseStatus {
   if (lease.revoked) return 'revoked'
-  return nowSeconds >= lease.expiry ? 'expired' : 'active'
+  if (nowSeconds >= lease.expiry) return 'expired'
+  if (lease.balance > 0n) return 'active'
+  if (lease.everFunded === false) return 'unfunded'
+  if (lease.everFunded === true) return 'depleted'
+  return 'unknown'
 }
 
 /** min(unused cap this period, lease balance), the same rule the contract applies. */
