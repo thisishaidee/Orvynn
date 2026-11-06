@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import type { Address, PublicClient } from 'viem'
 import { activityAgent, currentPeriodSpent, currentWindowIndex } from '../src/lib/agentpay-accounting'
 import { getLogsChunked, isRateLimitError, isRangeLimitError } from '../src/lib/agentpay-logs'
+import { leaseStatus } from '../src/lib/agentpay'
 
 const DELEGATE = '0x1111111111111111111111111111111111111111' as Address
 const OWNER = '0x2222222222222222222222222222222222222222' as Address
@@ -118,5 +119,34 @@ describe('Arc RPC error classification', () => {
     const error = new Error('Request exceeds defined limit. Details: rate limit exceeded')
     expect(isRateLimitError(error)).toBe(true)
     expect(isRangeLimitError(error)).toBe(false)
+  })
+})
+
+describe('lease funding status', () => {
+  const baseLease = {
+    revoked: false,
+    expiry: 2_000_000_000,
+    balance: 0n,
+  }
+
+  test('marks a never-funded lease as unfunded', () => {
+    expect(leaseStatus({ ...baseLease, everFunded: false }, 1_900_000_000)).toBe('unfunded')
+  })
+
+  test('marks a previously funded zero-balance lease as depleted', () => {
+    expect(leaseStatus({ ...baseLease, everFunded: true }, 1_900_000_000)).toBe('depleted')
+  })
+
+  test('does not guess when zero-balance funding history is unavailable', () => {
+    expect(leaseStatus({ ...baseLease, everFunded: null }, 1_900_000_000)).toBe('unknown')
+  })
+
+  test('keeps a funded lease active while it still holds funds', () => {
+    expect(leaseStatus({ ...baseLease, balance: 1n, everFunded: true }, 1_900_000_000)).toBe('active')
+  })
+
+  test('expiry and revocation take precedence over funding status', () => {
+    expect(leaseStatus({ ...baseLease, everFunded: false }, 2_000_000_000)).toBe('expired')
+    expect(leaseStatus({ ...baseLease, everFunded: false, revoked: true }, 1_900_000_000)).toBe('revoked')
   })
 })
