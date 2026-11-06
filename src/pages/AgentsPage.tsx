@@ -1,9 +1,11 @@
 import { useMemo } from 'react'
-import { ArrowRight, Bot, ShieldCheck, WalletCards, Activity } from 'lucide-react'
+import { ArrowRight, Bot, Copy, ShieldCheck, WalletCards, Activity } from 'lucide-react'
 import { Badge, Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
 import { SourceEmpty } from '@/components/agentpay/SourceEmpty'
 import { DelegateSpendPanel } from '@/components/agentpay/DelegateSpendPanel'
+import { copyToClipboard } from '@/lib/clipboard'
+import { toast } from 'sonner'
 import { leaseStatus, shortAddress, useLeases, type Lease } from '@/lib/agentpay'
 
 interface AgentRow {
@@ -44,7 +46,22 @@ export function AgentsPage() {
     {
       key: 'lease',
       header: 'Lease',
-      cell: (a) => (a.leases.length === 1 ? `Lease ${a.leases[0].id}` : `${a.leases.length} leases`),
+      cell: (a) => (
+        <div className="flex flex-wrap gap-1.5">
+          {a.leases.map((lease) => (
+            <button
+              key={lease.id}
+              type="button"
+              onClick={() => void copyToClipboard(lease.id).then(() => toast.success(`Lease ID ${lease.id} copied`)).catch(() => toast.error('Could not copy lease ID'))}
+              className="inline-flex min-h-9 items-center gap-1.5 rounded-control bg-brand-mist px-2.5 text-support text-brand-blue hover:bg-brand-pale"
+              aria-label={`Copy lease ID ${lease.id}`}
+              title={`Copy lease ID ${lease.id}`}
+            >
+              Lease {lease.id}<Copy className="size-3" aria-hidden />
+            </button>
+          ))}
+        </div>
+      ),
     },
     {
       key: 'status',
