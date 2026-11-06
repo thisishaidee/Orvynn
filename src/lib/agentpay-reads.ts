@@ -84,51 +84,51 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Discover only leases belonging to this wallet from indexed LeaseCreated
-  // events. This avoids the global nextLeaseId() eth_call, which Arc Testnet
-  // may throttle, and avoids enumerating unrelated leases for every wallet.
+  // Lease IDs are sequential. Read the current contract counter and inspect
+  // bounded storage batches instead of scanning years of LeaseCreated logs.
+  // Every read is pinned to one block so owner/delegate and allowance data
+  // describe the same chain snapshot.
   const snapshot = await client.getBlockNumber()
-  const latest = await client.getBlock({ blockNumber: snapshot })
-  const createdLogs = await getLogsChunked(client, {
-    address: contract,
-    event: eventAbi('LeaseCreated'),
-    args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
-    fromBlock,
-    toBlock: snapshot,
-  })
-  const leaseIds = [...new Set(createdLogs
-    .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId?.toString())
-    .filter((id): id is string => id !== undefined))]
-    .map((id) => BigInt(id))
-    .sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+  const [latest, nextLeaseId] = await Promise.all([
+    client.getBlock({ blockNumber: snapshot }),
+    client.readContract({
+      address: contract,
+      abi: agentPayAbi,
+      functionName: 'nextLeaseId',
+      blockNumber: snapshot,
+    }) as Promise<bigint>,
+  ])
 
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
 
-  for (let offset = 0; offset < leaseIds.length; offset += batchSize) {
-    const ids = leaseIds.slice(offset, offset + batchSize)
+  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
+    const end = first + BigInt(batchSize) < nextLeaseId
+      ? first + BigInt(batchSize)
+      : nextLeaseId
+    const ids = Array.from({ length: Number(end - first) }, (_, index) => first + BigInt(index))
     const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
     ])
 
-    let values: unknown[]
+    let rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }>
     try {
-      values = await client.multicall({
+      const values = await client.multicall({
         contracts: contracts as never,
         blockNumber: snapshot,
         allowFailure: false,
       }) as unknown[]
+      rows = ids.map((id, index) => ({
+        id,
+        row: values[index * 2] as LeaseTuple,
+        remaining: values[index * 2 + 1] as bigint,
+      }))
     } catch (error) {
-      // A true throttle must not trigger fallback calls; let the query retry
-      // after backoff rather than multiplying traffic against a rate-limited RPC.
+      // Do not fan out after a genuine throttle. For unsupported Multicall,
+      // fall back sequentially by lease while keeping each pair bounded.
       if (isRateLimitError(error)) throw error
-      // Some Arc RPC configurations may not expose Multicall3. Keep the
-      // fallback bounded and read against the same block snapshot.
-      // Do not fan out a failed Multicall into dozens of simultaneous RPC
-      // calls. Keep the fallback sequential by lease, with only the two
-      // independent reads for one lease running together.
-      const rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
+      rows = []
       for (const id of ids) {
         const [row, remaining] = await Promise.all([
           client.readContract({
@@ -140,43 +140,29 @@ async function discoverLeases(
         ])
         rows.push({ id, row, remaining })
       }
-      for (const item of rows) {
-        const matches = filter.owner
-          ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
-          : filter.delegate
-            ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
-            : false
-        if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') matching.push(item)
-      }
-      continue
     }
 
-    ids.forEach((id, index) => {
-      const row = values[index * 2] as LeaseTuple
-      const remaining = values[index * 2 + 1] as bigint
+    for (const item of rows) {
       const matches = filter.owner
-        ? row[0].toLowerCase() === filter.owner.toLowerCase()
+        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
         : filter.delegate
-          ? row[1].toLowerCase() === filter.delegate.toLowerCase()
+          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
           : false
-      if (matches && row[0] !== '0x0000000000000000000000000000000000000000') {
-        matching.push({ id, row, remaining })
+      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
+        matching.push(item)
       }
-    })
+    }
   }
 
   if (matching.length === 0) return []
 
-  // A zero balance alone cannot tell us whether a lease was never funded,
-  // fully spent, or withdrawn. Verify deposit history only for zero-balance
-  // leases; a positive current balance is already conclusive.
+  // Verify funding history only for zero-balance leases. This is supplemental
+  // metadata; if historical logs are unavailable, the lease itself still loads.
   const zeroBalanceIds = matching.filter(({ row }) => row[8] === 0n).map(({ id }) => id)
   const fundedLeaseIds = new Set<string>()
   let fundingHistoryAvailable = true
   if (zeroBalanceIds.length > 0) {
     try {
-      // Keep indexed lease-ID OR filters bounded for RPC providers with
-      // conservative topic-list limits.
       for (let offset = 0; offset < zeroBalanceIds.length; offset += 100) {
         const deposits = await getLogsChunked(client, {
           address: contract,
@@ -195,27 +181,29 @@ async function discoverLeases(
     }
   }
 
-  const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
+  const allowlistLeaseIds = matching
+    .filter(({ row }) => row[9])
+    .map(({ id }) => id)
   const allowedByLease = new Map<string, Map<string, boolean>>()
-  // Recipient history is supplemental display data. A failure to retrieve
-  // old AllowlistUpdated logs must never hide valid leases read from storage.
   let allowlistHistoryAvailable = true
-  if (includeAllowlistHistory && ids.length > 0) {
+  if (includeAllowlistHistory && allowlistLeaseIds.length > 0) {
     try {
-      const allowlistLogs = await getLogsChunked(client, {
-        address: contract,
-        event: eventAbi('AllowlistUpdated') as never,
-        args: { leaseId: ids },
-        fromBlock,
-        toBlock: snapshot,
-      })
-      for (const log of allowlistLogs) {
-        const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-        if (args.leaseId === undefined || !args.recipient) continue
-        const key = args.leaseId.toString()
-        const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
-        permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-        allowedByLease.set(key, permissions)
+      for (let offset = 0; offset < allowlistLeaseIds.length; offset += 100) {
+        const allowlistLogs = await getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('AllowlistUpdated') as never,
+          args: { leaseId: allowlistLeaseIds.slice(offset, offset + 100) },
+          fromBlock,
+          toBlock: snapshot,
+        })
+        for (const log of allowlistLogs) {
+          const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+          if (args.leaseId === undefined || !args.recipient) continue
+          const key = args.leaseId.toString()
+          const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
+          permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+          allowedByLease.set(key, permissions)
+        }
       }
     } catch {
       allowlistHistoryAvailable = false
