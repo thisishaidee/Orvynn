@@ -31,7 +31,7 @@ export type BalanceState = 'disconnected' | 'unsupported-network' | 'loading' | 
 
 /**
  * Real USDC balance via an on-chain `balanceOf` call to the USDC contract on the connected Arc network.
- * Returns a state, never a placeholder number.
+ * Returns the real read state; the UI may use a zero display fallback without changing that state.
  */
 export function useUsdcBalance(): { state: BalanceState; formatted?: string; refetch: () => void } {
   const { address, chainId, isConnected } = useAccount()
@@ -47,7 +47,7 @@ export function useUsdcBalance(): { state: BalanceState; formatted?: string; ref
     query: { enabled },
   })
 
-  if (!isConnected || !address) return { state: 'disconnected', refetch: () => void refetch() }
+  if (!isConnected || !address) return { state: 'disconnected', formatted: '0.00', refetch: () => void refetch() }
   if (!onArc) return { state: 'unsupported-network', formatted: '0.00', refetch: () => void refetch() }
   if (isError) return { state: 'error', formatted: '0.00', refetch: () => void refetch() }
   if (isPending || data === undefined) return { state: 'loading', refetch: () => void refetch() }
