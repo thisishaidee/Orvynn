@@ -38,16 +38,8 @@ export interface Lease {
   onChainRemaining?: bigint
 }
 
-export type LeaseStatus = 'active' | 'unfunded' | 'depleted' | 'unknown' | 'expired' | 'revoked'
-
-export function leaseStatus(lease: Pick<Lease, 'revoked' | 'expiry' | 'balance' | 'everFunded'>, nowSeconds = Math.floor(Date.now() / 1000)): LeaseStatus {
-  if (lease.revoked) return 'revoked'
-  if (nowSeconds >= lease.expiry) return 'expired'
-  if (lease.balance > 0n) return 'active'
-  if (lease.everFunded === false) return 'unfunded'
-  if (lease.everFunded === true) return 'depleted'
-  return 'unknown'
-}
+export { leaseStatus } from '@/lib/lease-status'
+export type { LeaseStatus } from '@/lib/lease-status'
 
 /** min(unused cap this period, lease balance), the same rule the contract applies. */
 export function remainingAllowance(lease: Lease, status: LeaseStatus): bigint {
