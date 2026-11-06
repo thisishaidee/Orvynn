@@ -63,6 +63,7 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         initialDeposit: 0n,
       })
       toast.success('Lease created', { description: result.hash })
+      walletBalance.refetch()
       reset()
       onCreated()
       onClose()
