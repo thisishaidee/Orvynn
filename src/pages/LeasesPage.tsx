@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { Archive, ArchiveRestore, KeyRound, Plus, ShieldCheck, Clock3, WalletCards } from 'lucide-react'
+import { Archive, ArchiveRestore, Copy, KeyRound, Plus, ShieldCheck, Clock3, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button, Card, CardHeader, ConfirmDialog, DataTable, Notice, PageHeader, ProgressBar, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { LeaseDetail } from '@/components/agentpay/LeaseDetail'
@@ -19,13 +19,17 @@ import {
 } from '@/lib/agentpay'
 import { cn } from '@/lib/cn'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { copyToClipboard } from '@/lib/clipboard'
 
 type Filter = 'all' | LeaseStatus | 'archived'
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'active', label: 'Active' },
+  { id: 'unfunded', label: 'Unfunded' },
+  { id: 'depleted', label: 'No funds' },
   { id: 'expired', label: 'Expired' },
   { id: 'revoked', label: 'Revoked' },
+  { id: 'unknown', label: 'Verify status' },
   { id: 'archived', label: 'Archived' },
 ]
 
@@ -39,7 +43,7 @@ export function LeasesPage() {
   const storageKey = archiveStorageKey(chainId, address)
   const [archivedIds, setArchivedIds] = useState<Set<string>>(() => new Set())
   const [filter, setFilter] = useState<Filter>('all')
-  const [selectedId, setSelectedId] = useState<string | undefined>()
+  const [openLeaseIds, setOpenLeaseIds] = useState<string[]>([])
   const [createOpen, setCreateOpen] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<Lease | undefined>()
   const [revoking, setRevoking] = useState(false)
@@ -61,9 +65,21 @@ export function LeasesPage() {
 
   const withStatus = useMemo(() => source.items.map((lease) => ({ lease, status: leaseStatus(lease), archived: archivedIds.has(lease.id) })), [source.items, archivedIds])
   const rows = withStatus.filter((r) => filter === 'archived' ? r.archived : !r.archived && (filter === 'all' || r.status === filter))
-  const selected = source.items.find((l) => l.id === selectedId)
   const ready = source.state === 'ready'
-  const count = (f: Filter) => (ready ? String(withStatus.filter((r) => f === 'archived' ? r.archived : !r.archived && (f === 'all' || r.status === f)).length) : '—')
+  const count = (f: Filter) => (ready ? String(withStatus.filter((r) => f === 'archived' ? r.archived : !r.archived && (f === 'all' || r.status === f)).length) : '0')
+
+  const openLeaseDetails = (leaseId: string) => {
+    if (openLeaseIds.includes(leaseId)) return
+    if (openLeaseIds.length >= 2) {
+      toast.info('Close one lease detail before opening another.')
+      return
+    }
+    setOpenLeaseIds((current) => current.includes(leaseId) || current.length >= 2 ? current : [...current, leaseId])
+  }
+
+  const closeLeaseDetails = (leaseId: string) => {
+    setOpenLeaseIds((current) => current.filter((id) => id !== leaseId))
+  }
 
   const setArchived = (lease: Lease, archived: boolean) => {
     if (!storageKey) {
@@ -120,7 +136,8 @@ export function LeasesPage() {
       mobileFullWidth: true,
       cell: ({ lease, archived }) => (
         <span className="inline-flex flex-wrap justify-end gap-2">
-          <Button size="sm" variant="secondary" onClick={() => setSelectedId(lease.id)}>View</Button>
+          <Button size="sm" variant="secondary" onClick={() => openLeaseDetails(lease.id)}>View</Button>
+          <Button size="sm" variant="ghost" onClick={() => void copyToClipboard(lease.id).then(() => toast.success(`Lease ID ${lease.id} copied`)).catch(() => toast.error("Could not copy lease ID"))} aria-label={`Copy lease ID ${lease.id}`}><Copy className="size-3.5" aria-hidden /> Copy ID</Button>
           <Button size="sm" variant="secondary" onClick={() => setArchived(lease, !archived)}>
             {archived ? <ArchiveRestore className="size-3.5" aria-hidden /> : <Archive className="size-3.5" aria-hidden />}
             {archived ? 'Restore' : 'Archive'}
@@ -139,11 +156,12 @@ export function LeasesPage() {
         description="A lease is a spending agreement between you and an agent: how much it may spend, how often, until when, and to whom."
         actions={<Button iconLeft={<Plus className="size-4" aria-hidden />} onClick={() => setCreateOpen(true)}>Create lease</Button>}
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total leases" value={ready ? withStatus.length : undefined} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
-        <StatCard label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : undefined} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
-        <StatCard label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : undefined} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
-        <StatCard label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : undefined} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard loading={source.state === "loading"} label="Total leases" value={ready ? withStatus.length : 0} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
+        <StatCard loading={source.state === "loading"} label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : 0} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
+        <StatCard loading={source.state === "loading"} label="Needs funds" value={ready ? withStatus.filter((r) => (r.status === 'unfunded' || r.status === 'depleted') && !r.archived).length : 0} icon={<WalletCards className="size-4" />} hint="Unfunded or no balance remaining" />
+        <StatCard loading={source.state === "loading"} label="Expired or revoked" value={ready ? withStatus.filter((r) => (r.status === 'expired' || r.status === 'revoked') && !r.archived).length : 0} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
+        <StatCard loading={source.state === "loading"} label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : 0} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
       {source.refreshError && (
@@ -154,7 +172,7 @@ export function LeasesPage() {
           </span>
         </Notice>
       )}
-      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setSelectedId(undefined)} />
+      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setOpenLeaseIds([])} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
         title="Revoke this lease?"
@@ -211,7 +229,7 @@ export function LeasesPage() {
               reason={source.reason}
               subject="Leases"
               icon={KeyRound}
-              readyTitle={filter === 'all' ? 'No leases yet' : filter === 'archived' ? 'No archived leases' : `No ${filter} leases`}
+              readyTitle={filter === 'all' ? 'No leases yet' : filter === 'archived' ? 'No archived leases' : filter === 'unknown' ? 'No leases need verification' : `No ${filter} leases`}
               readyDescription={filter === 'archived' ? 'Leases you archive will appear here. You can restore them at any time.' : 'Create a lease to give an agent a spending limit.'}
             />
           }
@@ -220,12 +238,23 @@ export function LeasesPage() {
 
       <section aria-labelledby="lease-detail-heading" className="space-y-3">
         <div>
-          <h2 id="lease-detail-heading" className="text-section">Lease detail</h2>
+          <h2 id="lease-detail-heading" className="text-section">Lease details</h2>
           <p className="text-support text-ink-soft">
-            {selected ? 'Permissions and actions for the selected lease.' : 'Layout preview. Values appear here when you select a lease.'}
+            {openLeaseIds.length > 0
+              ? `${openLeaseIds.length} of 2 lease detail views open. Close a view before opening another when both are in use.`
+              : 'Open a lease to inspect its permissions, balance and actions.'}
           </p>
         </div>
-        <LeaseDetail lease={selected} />
+        {openLeaseIds.length === 0 ? (
+          <LeaseDetail />
+        ) : (
+          <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+            {openLeaseIds.map((id) => {
+              const lease = source.items.find((item) => item.id === id)
+              return lease ? <LeaseDetail key={id} lease={lease} onClose={() => closeLeaseDetails(id)} /> : null
+            })}
+          </div>
+        )}
       </section>
     </div>
   )

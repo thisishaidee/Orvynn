@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Copy } from 'lucide-react'
 import { useAccount, useWalletClient } from 'wagmi'
 import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
@@ -6,6 +7,7 @@ import { Button, Card, CardHeader, Field, Input, Modal, Notice, Select, StatusBa
 import { formatUsdc, leaseStatus, remainingAllowance, shortAddress, useDelegateLeases } from '@/lib/agentpay'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
 import { AgentRequestInbox, type AgentPaymentRequest } from '@/components/agentpay/AgentRequestInbox'
+import { copyToClipboard } from '@/lib/clipboard'
 
 type RequestStage = 'details' | 'review'
 
@@ -208,7 +210,12 @@ export function DelegateSpendPanel() {
             </Field>
             {selected && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-control bg-brand-mist p-3">
-                <span className="text-support text-ink-soft">Available to spend now</span>
+                <div className="min-w-0">
+                  <span className="text-support text-ink-soft">Available to spend now</span>
+                  {selected && <button type="button" onClick={() => void copyToClipboard(selected.id).then(() => toast.success(`Lease ID ${selected.id} copied`)).catch(() => toast.error('Could not copy lease ID'))} className="mt-1 inline-flex min-h-9 items-center gap-1.5 text-support font-medium text-brand-blue" aria-label={`Copy lease ID ${selected.id}`}>
+                    Lease {selected.id} <Copy className="size-3" aria-hidden />
+                  </button>}
+                </div>
                 <strong className="num text-label">{formatUsdc(available)} USDC</strong>
               </div>
             )}

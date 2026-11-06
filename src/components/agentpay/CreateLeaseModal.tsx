@@ -3,6 +3,7 @@ import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
 import { Button, Field, Input, Modal, Notice, Select } from '@/components/ui'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { useUsdcBalance } from '@/lib/wallet'
 
 const periods = [
   { label: 'Hourly', value: '3600' },
@@ -17,6 +18,7 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
   onCreated: () => void
 }) {
   const tx = useAgentPayTransactions()
+  const walletBalance = useUsdcBalance()
   const [delegate, setDelegate] = useState('')
   const [cap, setCap] = useState('')
   const [period, setPeriod] = useState('86400')
@@ -61,6 +63,7 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         initialDeposit: 0n,
       })
       toast.success('Lease created', { description: result.hash })
+      walletBalance.refetch()
       reset()
       onCreated()
       onClose()
@@ -86,16 +89,41 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         <Field label="Agent wallet address">
           {(props) => <Input {...props} value={delegate} onChange={(e) => setDelegate(e.target.value)} placeholder="0x…" spellCheck={false} autoCapitalize="none" />}
         </Field>
-        <Field label="Spending cap per period" hint="USDC, up to six decimal places.">
+        <Field label="Spending cap per period" hint={walletBalance.state === 'ready' ? `Wallet balance: ${walletBalance.formatted} USDC.` : "USDC, up to six decimal places."}>
           {(props) => <Input {...props} type="number" min="0.000001" step="0.000001" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="Enter amount (e.g. 1.00)" />}
         </Field>
+        {walletBalance.state === 'ready' && /^\d+(\.\d{1,6})?$/.test(cap) && parseUnits(cap, 6) > (walletBalance.raw ?? 0n) && (
+          <Notice tone="warning" title="Spending cap is higher than your wallet balance">
+            Your wallet currently has {walletBalance.formatted} USDC. The cap is a per-period permission, not money deposited into the lease. This lease will be created unfunded, and the agent cannot spend until you add funds.
+          </Notice>
+        )}
+        {walletBalance.state === 'loading' && <p className="text-support text-ink-soft">Reading your current wallet USDC balance…</p>}
+        {walletBalance.state === 'error' && <Notice tone="warning" title="Wallet balance could not be verified">You can still create this unfunded lease. Orvynn will check your balance again before any deposit.</Notice>}
         <Field label="Spending period">
           {(props) => <Select {...props} value={period} onChange={(e) => setPeriod(e.target.value)}>
             {periods.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>}
         </Field>
-        <Field label="Lease expiry">
-          {(props) => <Input {...props} type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} />}
+        <Field label="Lease expiry" hint="Tap the field to choose both the expiry date and time.">
+          {(props) => (
+            <Input
+              {...props}
+              type="datetime-local"
+              value={expiry}
+              onChange={(e) => setExpiry(e.target.value)}
+              onClick={(event) => {
+                const input = event.currentTarget
+                if (typeof input.showPicker === 'function') {
+                  try {
+                    input.showPicker()
+                  } catch {
+                    input.focus()
+                  }
+                }
+              }}
+              className="cursor-pointer"
+            />
+          )}
         </Field>
         <label className="flex items-start gap-3 rounded-card border border-line p-3 text-body">
           <input type="checkbox" checked={allowlist} onChange={(e) => setAllowlist(e.target.checked)} className="mt-1 size-4" />

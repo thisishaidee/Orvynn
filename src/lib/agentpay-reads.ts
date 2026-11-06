@@ -13,7 +13,7 @@ import { agentPayAbi } from '@/lib/agentpay-abi'
 import { agentPayAddressEnvVar, getAgentPayAddress } from '@/lib/agentpay-address'
 import type { ActivityItem, ActivityType, DataSource, Lease } from '@/lib/agentpay'
 import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
-import { getActivityLogsChunked, getLogsChunked } from '@/lib/agentpay-logs'
+import { getActivityLogsChunked, getLogsChunked, isRateLimitError } from '@/lib/agentpay-logs'
 import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
@@ -53,7 +53,7 @@ type LeaseTuple = readonly [
   Address, Address, bigint, bigint, bigint, bigint, bigint, bigint, bigint, boolean, boolean,
 ]
 
-function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[] | undefined, nowSeconds: bigint): Lease {
+function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Address[] | undefined, everFunded: boolean | null, nowSeconds: bigint): Lease {
   return {
     id: id.toString(),
     owner: row[0],
@@ -69,6 +69,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
       spentThisWindow: row[7],
     }),
     balance: row[8],
+    everFunded,
     allowlistEnabled: row[9],
     revoked: row[10],
     ...(allowed !== undefined ? { allowedRecipients: allowed } : {}),
@@ -83,8 +84,10 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Lease IDs are sequential and the contract exposes nextLeaseId. Enumerate
-  // current storage directly instead of scanning every historical LeaseCreated log.
+  // Lease IDs are sequential. Read the current contract counter and inspect
+  // bounded storage batches instead of scanning years of LeaseCreated logs.
+  // Every read is pinned to one block so owner/delegate and allowance data
+  // describe the same chain snapshot.
   const snapshot = await client.getBlockNumber()
   const [latest, nextLeaseId] = await Promise.all([
     client.getBlock({ blockNumber: snapshot }),
@@ -93,32 +96,40 @@ async function discoverLeases(
       abi: agentPayAbi,
       functionName: 'nextLeaseId',
       blockNumber: snapshot,
-    }),
+    }) as Promise<bigint>,
   ])
+
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
-  const batchSize = 25
+  const batchSize = 5
 
   for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
-    const ids = Array.from(
-      { length: Number(nextLeaseId - first > BigInt(batchSize) ? BigInt(batchSize) : nextLeaseId - first) },
-      (_, index) => first + BigInt(index),
-    )
+    const end = first + BigInt(batchSize) < nextLeaseId
+      ? first + BigInt(batchSize)
+      : nextLeaseId
+    const ids = Array.from({ length: Number(end - first) }, (_, index) => first + BigInt(index))
     const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
     ])
 
-    let values: unknown[]
+    let rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }>
     try {
-      values = await client.multicall({
+      const values = await client.multicall({
         contracts: contracts as never,
         blockNumber: snapshot,
         allowFailure: false,
       }) as unknown[]
-    } catch {
-      // Some Arc RPC configurations may not expose Multicall3. Keep the
-      // fallback bounded and read against the same block snapshot.
-      const rows = await Promise.all(ids.map(async (id) => {
+      rows = ids.map((id, index) => ({
+        id,
+        row: values[index * 2] as LeaseTuple,
+        remaining: values[index * 2 + 1] as bigint,
+      }))
+    } catch (error) {
+      // Do not fan out after a genuine throttle. For unsupported Multicall,
+      // fall back sequentially by lease while keeping each pair bounded.
+      if (isRateLimitError(error)) throw error
+      rows = []
+      for (const id of ids) {
         const [row, remaining] = await Promise.all([
           client.readContract({
             address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
@@ -127,56 +138,72 @@ async function discoverLeases(
             address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
           }) as Promise<bigint>,
         ])
-        return { id, row, remaining }
-      }))
-      for (const item of rows) {
-        const matches = filter.owner
-          ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
-          : filter.delegate
-            ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
-            : false
-        if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') matching.push(item)
+        rows.push({ id, row, remaining })
       }
-      continue
     }
 
-    ids.forEach((id, index) => {
-      const row = values[index * 2] as LeaseTuple
-      const remaining = values[index * 2 + 1] as bigint
+    for (const item of rows) {
       const matches = filter.owner
-        ? row[0].toLowerCase() === filter.owner.toLowerCase()
+        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
         : filter.delegate
-          ? row[1].toLowerCase() === filter.delegate.toLowerCase()
+          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
           : false
-      if (matches && row[0] !== '0x0000000000000000000000000000000000000000') {
-        matching.push({ id, row, remaining })
+      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
+        matching.push(item)
       }
-    })
+    }
   }
 
   if (matching.length === 0) return []
 
-  const ids = matching.map(({ id, row }) => row[9] ? id : undefined).filter((id): id is bigint => id !== undefined)
-  const allowedByLease = new Map<string, Map<string, boolean>>()
-  // Recipient history is supplemental display data. A failure to retrieve
-  // old AllowlistUpdated logs must never hide valid leases read from storage.
-  let allowlistHistoryAvailable = true
-  if (includeAllowlistHistory && ids.length > 0) {
+  // Verify funding history only for zero-balance leases. This is supplemental
+  // metadata; if historical logs are unavailable, the lease itself still loads.
+  const zeroBalanceIds = matching.filter(({ row }) => row[8] === 0n).map(({ id }) => id)
+  const fundedLeaseIds = new Set<string>()
+  let fundingHistoryAvailable = true
+  if (zeroBalanceIds.length > 0) {
     try {
-      const allowlistLogs = await getLogsChunked(client, {
-        address: contract,
-        event: eventAbi('AllowlistUpdated') as never,
-        args: { leaseId: ids },
-        fromBlock,
-        toBlock: snapshot,
-      })
-      for (const log of allowlistLogs) {
-        const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-        if (args.leaseId === undefined || !args.recipient) continue
-        const key = args.leaseId.toString()
-        const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
-        permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-        allowedByLease.set(key, permissions)
+      for (let offset = 0; offset < zeroBalanceIds.length; offset += 100) {
+        const deposits = await getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('Deposited') as never,
+          args: { leaseId: zeroBalanceIds.slice(offset, offset + 100) },
+          fromBlock,
+          toBlock: snapshot,
+        })
+        for (const log of deposits) {
+          const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
+          if (leaseId !== undefined) fundedLeaseIds.add(leaseId.toString())
+        }
+      }
+    } catch {
+      fundingHistoryAvailable = false
+    }
+  }
+
+  const allowlistLeaseIds = matching
+    .filter(({ row }) => row[9])
+    .map(({ id }) => id)
+  const allowedByLease = new Map<string, Map<string, boolean>>()
+  let allowlistHistoryAvailable = true
+  if (includeAllowlistHistory && allowlistLeaseIds.length > 0) {
+    try {
+      for (let offset = 0; offset < allowlistLeaseIds.length; offset += 100) {
+        const allowlistLogs = await getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('AllowlistUpdated') as never,
+          args: { leaseId: allowlistLeaseIds.slice(offset, offset + 100) },
+          fromBlock,
+          toBlock: snapshot,
+        })
+        for (const log of allowlistLogs) {
+          const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+          if (args.leaseId === undefined || !args.recipient) continue
+          const key = args.leaseId.toString()
+          const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
+          permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+          allowedByLease.set(key, permissions)
+        }
       }
     } catch {
       allowlistHistoryAvailable = false
@@ -190,7 +217,10 @@ async function discoverLeases(
         ? [...permissions.entries()].filter(([, enabled]) => enabled).map(([address]) => address as Address)
         : []
       : undefined
-    return toLease(id, row, remaining, allowed, latest.timestamp)
+    const everFunded = row[8] > 0n || fundedLeaseIds.has(id.toString())
+      ? true
+      : fundingHistoryAvailable ? false : null
+    return toLease(id, row, remaining, allowed, everFunded, latest.timestamp)
   }).sort((a, b) => Number(b.id) - Number(a.id))
 }
 

@@ -33,10 +33,13 @@ export function Badge({ tone = 'neutral', dot = true, className, children, ...re
   )
 }
 
-export type StatusKind = 'active' | 'pending' | 'success' | 'expired' | 'revoked' | 'failed'
+export type StatusKind = 'active' | 'pending' | 'success' | 'unfunded' | 'depleted' | 'unknown' | 'expired' | 'revoked' | 'failed'
 
 const statusMap: Record<StatusKind, { label: string; tone: BadgeTone }> = {
   active: { label: 'Active', tone: 'success' },
+  unfunded: { label: 'Unfunded', tone: 'warning' },
+  depleted: { label: 'No funds', tone: 'neutral' },
+  unknown: { label: 'Verify status', tone: 'warning' },
   pending: { label: 'Pending', tone: 'warning' },
   success: { label: 'Confirmed', tone: 'success' },
   expired: { label: 'Expired', tone: 'neutral' },

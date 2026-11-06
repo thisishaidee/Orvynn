@@ -19,6 +19,16 @@ const arcMainnetTransport = fallback([
   http(arc.rpcUrls.default.http[0]),
 ])
 
+// Arc Testnet's public endpoint can reject even narrow eth_getLogs filters.
+// Fail over across independently operated Arc-compatible endpoints instead
+// of repeatedly asking the same RPC for a block it has already rejected.
+const arcTestnetTransport = fallback([
+  http('https://rpc.testnet.arc.io'),
+  http('https://rpc.blockdaemon.testnet.arc.io'),
+  http('https://rpc.drpc.testnet.arc.io'),
+  http('https://rpc.quicknode.testnet.arc.io'),
+])
+
 const walletConnectProjectId = (import.meta.env as Record<string, string | undefined>).VITE_WALLETCONNECT_PROJECT_ID?.trim()
 
 export const walletConnectEnabled = Boolean(walletConnectProjectId)
@@ -36,6 +46,13 @@ function getWalletMetadata() {
 
 export const config = createConfig({
   multiInjectedProviderDiscovery: true,
+  // Arc's RPC has rejected automatic Multicall aggregation for unrelated reads
+  // (including nextLeaseId). Keep hook reads as direct eth_call requests; the
+  // lease discovery path uses its own explicitly bounded multicall batches.
+  batch: {
+    [arc.id]: { multicall: false },
+    [arcTestnet.id]: { multicall: false },
+  },
   chains: [arc, arcTestnet],
   connectors: [
     injected({ shimDisconnect: true }),
@@ -55,7 +72,7 @@ export const config = createConfig({
   ],
   transports: {
     [arc.id]: arcMainnetTransport,
-    [arcTestnet.id]: http(),
+    [arcTestnet.id]: arcTestnetTransport,
   },
   ssr: false,
 })
