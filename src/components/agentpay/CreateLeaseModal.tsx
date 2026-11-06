@@ -94,8 +94,26 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
             {periods.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>}
         </Field>
-        <Field label="Lease expiry">
-          {(props) => <Input {...props} type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} />}
+        <Field label="Lease expiry" hint="Tap the field to choose both the expiry date and time.">
+          {(props) => (
+            <Input
+              {...props}
+              type="datetime-local"
+              value={expiry}
+              onChange={(e) => setExpiry(e.target.value)}
+              onClick={(event) => {
+                const input = event.currentTarget
+                if (typeof input.showPicker === 'function') {
+                  try {
+                    input.showPicker()
+                  } catch {
+                    input.focus()
+                  }
+                }
+              }}
+              className="cursor-pointer"
+            />
+          )}
         </Field>
         <label className="flex items-start gap-3 rounded-card border border-line p-3 text-body">
           <input type="checkbox" checked={allowlist} onChange={(e) => setAllowlist(e.target.checked)} className="mt-1 size-4" />
