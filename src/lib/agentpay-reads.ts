@@ -13,7 +13,7 @@ import { agentPayAbi } from '@/lib/agentpay-abi'
 import { agentPayAddressEnvVar, getAgentPayAddress } from '@/lib/agentpay-address'
 import type { ActivityItem, ActivityType, DataSource, Lease } from '@/lib/agentpay'
 import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
-import { getActivityLogsChunked, getLogsChunked } from '@/lib/agentpay-logs'
+import { getActivityLogsChunked, getLogsChunked, isRateLimitError } from '@/lib/agentpay-logs'
 import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
@@ -116,7 +116,10 @@ async function discoverLeases(
         blockNumber: snapshot,
         allowFailure: false,
       }) as unknown[]
-    } catch {
+    } catch (error) {
+      // A true throttle must not trigger fallback calls; let the query retry
+      // after backoff rather than multiplying traffic against a rate-limited RPC.
+      if (isRateLimitError(error)) throw error
       // Some Arc RPC configurations may not expose Multicall3. Keep the
       // fallback bounded and read against the same block snapshot.
       // Do not fan out a failed Multicall into dozens of simultaneous RPC
