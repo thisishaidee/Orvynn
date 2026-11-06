@@ -88,10 +88,10 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         <Field label="Agent wallet address">
           {(props) => <Input {...props} value={delegate} onChange={(e) => setDelegate(e.target.value)} placeholder="0x…" spellCheck={false} autoCapitalize="none" />}
         </Field>
-        <Field label="Spending cap per period" hint="USDC, up to six decimal places.">
+        <Field label="Spending cap per period" hint={walletBalance.state === 'ready' ? `Wallet balance: ${walletBalance.formatted} USDC.` : "USDC, up to six decimal places."}>
           {(props) => <Input {...props} type="number" min="0.000001" step="0.000001" value={cap} onChange={(e) => setCap(e.target.value)} placeholder="Enter amount (e.g. 1.00)" />}
         </Field>
-        {walletBalance.state === 'ready' && /^\\d+(\\.\\d{1,6})?$/.test(cap) && parseUnits(cap, 6) > (walletBalance.raw ?? 0n) && (
+        {walletBalance.state === 'ready' && /^\d+(\.\d{1,6})?$/.test(cap) && parseUnits(cap, 6) > (walletBalance.raw ?? 0n) && (
           <Notice tone="warning" title="Spending cap is higher than your wallet balance">
             Your wallet currently has {walletBalance.formatted} USDC. The cap is a per-period permission, not money deposited into the lease. This lease will be created unfunded, and the agent cannot spend until you add funds.
           </Notice>
