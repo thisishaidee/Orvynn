@@ -60,7 +60,7 @@ function getColumns(explorerBase?: string): Column<ActivityItem>[] {
     header: 'Transaction',
     hideOnTablet: true,
     mobileFullWidth: true,
-    cell: (a) => explorerBase ? (
+    cell: (a) => explorerBase && a.txHash !== '0x' ? (
       <a href={`${explorerBase}/tx/${a.txHash}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center gap-1.5 text-support font-medium text-brand-blue hover:underline">
         View on explorer <ExternalLink className="size-3.5" aria-hidden />
       </a>
