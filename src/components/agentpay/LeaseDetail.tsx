@@ -6,6 +6,7 @@ import { Button, Card, CardHeader, ConfirmDialog, Field, Input, Modal, Notice, P
 import { InfoList, InfoRow, SupportChips } from '@/components/agentpay/Notices'
 import { formatDateTime, formatPeriod, formatUsdc, leaseStatus, remainingAllowance, shortAddress, type Lease } from '@/lib/agentpay'
 import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { useUsdcBalance } from '@/lib/wallet'
 import { copyToClipboard } from '@/lib/clipboard'
 
 const Dash = () => <span className="text-ink-mute" aria-label="Not available">—</span>
@@ -52,6 +53,7 @@ export function PermissionsSection({ lease }: { lease?: Lease }) {
 
 export function LeaseDetail({ lease, onClose }: { lease?: Lease; onClose?: () => void }) {
   const tx = useAgentPayTransactions()
+  const walletBalance = useUsdcBalance()
   const status = lease ? leaseStatus(lease) : undefined
   const remaining = lease && status ? remainingAllowance(lease, status) : undefined
   const [action, setAction] = useState<'deposit' | 'recipient' | null>(null)
@@ -192,11 +194,18 @@ export function LeaseDetail({ lease, onClose }: { lease?: Lease; onClose?: () =>
           <Field label="Deposit amount" hint="USDC, up to six decimal places.">
             {(props) => <Input {...props} type="number" min="0.000001" step="0.000001" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="50.00" />}
           </Field>
+          {walletBalance.state === 'ready' && depositUnits > (walletBalance.raw ?? 0n) && (
+            <Notice tone="warning" title="Insufficient wallet USDC balance">
+              Your wallet has {walletBalance.formatted} USDC, but this deposit requires {formatUsdc(depositUnits)} USDC. Add USDC to your wallet or lower the deposit amount.
+            </Notice>
+          )}
+          {walletBalance.state === 'loading' && <p className="text-support text-ink-soft">Checking your wallet USDC balance…</p>}
+          {walletBalance.state === 'error' && <Notice tone="warning" title="Wallet balance unavailable">Orvynn will verify the balance directly on-chain before submitting the deposit.</Notice>}
           {error && <Notice tone="danger" title="Deposit not completed">{error}</Notice>}
           <div className="flex flex-col gap-2 border-t border-line pt-4 sm:flex-row sm:flex-wrap sm:justify-end">
             <Button variant="secondary" className="min-h-11 w-full sm:w-auto" disabled={busy} onClick={closeAction}>Cancel</Button>
-            <Button variant="secondary" className="min-h-11 w-full sm:w-auto" loading={busy} disabled={tx.state !== 'ready' || depositUnits <= 0n || approvedAmount >= depositUnits} onClick={() => void approveDeposit()}>Approve USDC</Button>
-            <Button className="min-h-11 w-full sm:w-auto" loading={busy} disabled={tx.state !== 'ready' || depositUnits <= 0n || approvedAmount < depositUnits} onClick={() => void submitDeposit()}>Deposit funds</Button>
+            <Button variant="secondary" className="min-h-11 w-full sm:w-auto" loading={busy} disabled={tx.state !== 'ready' || depositUnits <= 0n || approvedAmount >= depositUnits || (walletBalance.raw !== undefined && depositUnits > walletBalance.raw)} onClick={() => void approveDeposit()}>Approve USDC</Button>
+            <Button className="min-h-11 w-full sm:w-auto" loading={busy} disabled={tx.state !== 'ready' || depositUnits <= 0n || approvedAmount < depositUnits || (walletBalance.raw !== undefined && depositUnits > walletBalance.raw)} onClick={() => void submitDeposit()}>Deposit funds</Button>
           </div>
         </div>
       </Modal>
