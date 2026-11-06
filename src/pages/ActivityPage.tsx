@@ -38,7 +38,7 @@ const columns: Column<ActivityItem>[] = [
     align: 'right',
     cell: (a) => {
       if (a.amount !== undefined) return <span className="num">{formatUsdc(a.amount)} USDC</span>
-      return <span className="text-ink-mute">{AMOUNT_EVENTS.includes(a.type) ? 'Unavailable' : 'Not applicable'}</span>
+      return <span className="num">{AMOUNT_EVENTS.includes(a.type) ? '0.00 USDC' : 'Not applicable'}</span>
     },
   },
   { key: 'date', header: 'Date', cell: (a) => (a.timestamp ? formatDateTime(a.timestamp) : <span className="text-ink-mute">Unavailable</span>) },
@@ -58,10 +58,10 @@ export function ActivityPage() {
         description="A record of everything that happened on your leases: payments, deposits, withdrawals and revocations."
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Events loaded" value={source.state === 'ready' ? source.items.length : undefined} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
-        <StatCard label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : undefined} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
-        <StatCard label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : undefined} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
-        <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : undefined} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
+        <StatCard label="Events loaded" value={source.state === 'ready' ? source.items.length : 0} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
+        <StatCard label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : 0} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
+        <StatCard label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : 0} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
+        <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : 0} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
       </div>
       <NotConnectedNotice subject="Activity" />
 
