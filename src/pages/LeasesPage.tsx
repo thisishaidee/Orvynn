@@ -25,8 +25,11 @@ type Filter = 'all' | LeaseStatus | 'archived'
 const FILTERS: { id: Filter; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'active', label: 'Active' },
+  { id: 'unfunded', label: 'Unfunded' },
+  { id: 'depleted', label: 'No funds' },
   { id: 'expired', label: 'Expired' },
   { id: 'revoked', label: 'Revoked' },
+  { id: 'unknown', label: 'Verify status' },
   { id: 'archived', label: 'Archived' },
 ]
 
@@ -155,10 +158,11 @@ export function LeasesPage() {
         description="A lease is a spending agreement between you and an agent: how much it may spend, how often, until when, and to whom."
         actions={<Button iconLeft={<Plus className="size-4" aria-hidden />} onClick={() => setCreateOpen(true)}>Create lease</Button>}
       />
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard loading={source.state === "loading"} label="Total leases" value={ready ? withStatus.length : 0} icon={<WalletCards className="size-4" />} hint="Created from this wallet" />
         <StatCard loading={source.state === "loading"} label="Active" value={ready ? withStatus.filter((r) => r.status === 'active' && !r.archived).length : 0} icon={<ShieldCheck className="size-4" />} hint="Currently available to agents" />
-        <StatCard loading={source.state === "loading"} label="Expired or revoked" value={ready ? withStatus.filter((r) => r.status !== 'active' && !r.archived).length : 0} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
+        <StatCard loading={source.state === "loading"} label="Needs funds" value={ready ? withStatus.filter((r) => (r.status === 'unfunded' || r.status === 'depleted') && !r.archived).length : 0} icon={<WalletCards className="size-4" />} hint="Unfunded or no balance remaining" />
+        <StatCard loading={source.state === "loading"} label="Expired or revoked" value={ready ? withStatus.filter((r) => (r.status === 'expired' || r.status === 'revoked') && !r.archived).length : 0} icon={<Clock3 className="size-4" />} hint="No longer spendable" />
         <StatCard loading={source.state === "loading"} label="Archived" value={ready ? withStatus.filter((r) => r.archived).length : 0} icon={<Archive className="size-4" />} hint="Hidden from the main list" />
       </div>
       <NotConnectedNotice subject="Leases" />
@@ -227,7 +231,7 @@ export function LeasesPage() {
               reason={source.reason}
               subject="Leases"
               icon={KeyRound}
-              readyTitle={filter === 'all' ? 'No leases yet' : filter === 'archived' ? 'No archived leases' : `No ${filter} leases`}
+              readyTitle={filter === 'all' ? 'No leases yet' : filter === 'archived' ? 'No archived leases' : filter === 'unknown' ? 'No leases need verification' : `No ${filter} leases`}
               readyDescription={filter === 'archived' ? 'Leases you archive will appear here. You can restore them at any time.' : 'Create a lease to give an agent a spending limit.'}
             />
           }
