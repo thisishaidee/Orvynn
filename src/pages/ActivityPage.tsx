@@ -1,6 +1,5 @@
-import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon } from 'lucide-react'
+import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon, Copy } from 'lucide-react'
 import { useAccount } from 'wagmi'
-import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
