@@ -1,4 +1,5 @@
 import { History, ArrowDownLeft, ArrowUpRight, ShieldCheck, Activity as ActivityIcon } from 'lucide-react'
+import { useAccount } from 'wagmi'
 import { Card, CardHeader, DataTable, PageHeader, StatusBadge, StatCard, type Column } from '@/components/ui'
 import { NotConnectedNotice } from '@/components/agentpay/Notices'
 import { SourceEmpty } from '@/components/agentpay/SourceEmpty'
@@ -48,6 +49,7 @@ const columns: Column<ActivityItem>[] = [
 const TRACKED: ActivityType[] = ['LeaseCreated', 'Deposited', 'Spent', 'Revoked', 'Withdrawn', 'AllowlistUpdated']
 
 export function ActivityPage() {
+  const { isConnected } = useAccount()
   const source = useActivity()
 
   return (
@@ -58,10 +60,10 @@ export function ActivityPage() {
         description="A record of everything that happened on your leases: payments, deposits, withdrawals and revocations."
       />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Events loaded" value={source.state === 'ready' ? source.items.length : 0} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
-        <StatCard label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : 0} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
-        <StatCard label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : 0} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
-        <StatCard label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : 0} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
+        <StatCard loading={isConnected && source.state === "loading"} label="Events loaded" value={source.state === 'ready' ? source.items.length : 0} icon={<ActivityIcon className="size-4" />} hint="Contract activity in this view" />
+        <StatCard loading={isConnected && source.state === "loading"} label="Payments" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Spent').length : 0} icon={<ArrowUpRight className="size-4" />} hint="Agent spending events" />
+        <StatCard loading={isConnected && source.state === "loading"} label="Deposits" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Deposited').length : 0} icon={<ArrowDownLeft className="size-4" />} hint="Funds added to leases" />
+        <StatCard loading={isConnected && source.state === "loading"} label="Revocations" value={source.state === 'ready' ? source.items.filter((a) => a.type === 'Revoked').length : 0} icon={<ShieldCheck className="size-4" />} hint="Access removed" />
       </div>
       <NotConnectedNotice subject="Activity" />
 
