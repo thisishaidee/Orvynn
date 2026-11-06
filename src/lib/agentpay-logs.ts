@@ -86,7 +86,15 @@ export function isRateLimitError(error: unknown): boolean {
     }
   }
 
-  return /rate limit|too many requests|\b429\b|throttl|request limit exceeded/.test(parts.join(' ').toLowerCase())
+  const detail = parts.join(' ').toLowerCase()
+  // Arc can include both "request exceeds defined limit" and generic
+  // "rate limit exceeded" wording. The explicit request-size signal means
+  // this is an oversized eth_getLogs range, so split it instead of retrying
+  // the same rejected range.
+  if (/request exceeds (the )?defined limit|request size exceeds|limit on (the )?request/.test(detail)) {
+    return false
+  }
+  return /rate limit|too many requests|\\b429\\b|throttl|request limit exceeded/.test(detail)
 }
 
 function wait(ms: number): Promise<void> {
@@ -126,7 +134,8 @@ export function isRangeLimitError(error: unknown): boolean {
   const detail = parts.join(' ').toLowerCase()
   // Providers reuse JSON-RPC -32005 for throttling as well as query limits.
   // Never recursively split a rate-limited request: that multiplies traffic.
-  if (/rate limit|too many requests|429|throttl/.test(detail)) return false
+  const explicitRequestSizeLimit = /request exceeds (the )?defined limit|request size exceeds|limit on (the )?request/.test(detail)
+  if (!explicitRequestSizeLimit && /rate limit|too many requests|429|throttl/.test(detail)) return false
   return (
     /block range|range (is )?too (large|wide)|too many results|query returned more than|response size|result set too large|exceeds? (the )?(maximum|max) (block )?range|maximum block range|request exceeds (the )?defined limit|request size exceeds|limit on (the )?request/.test(detail)
     || /(?:^|\s)413(?:\s|$)/.test(detail)
