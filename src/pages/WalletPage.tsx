@@ -123,9 +123,8 @@ export function WalletPage() {
           tone="featured"
           label="USDC balance"
           icon={<Wallet className="size-5" />}
-          value={balance.state === 'ready' ? balance.formatted : undefined}
+          value={balance.formatted ?? '0.00'}
           unit="USDC"
-          loading={balance.state === 'loading'}
           hint={BALANCE_HINT[balance.state]}
         />
       </div>
