@@ -92,8 +92,8 @@ describe('allowlist read failure', () => {
 })
 
 describe('Arc RPC error classification', () => {
-  test('recognises provider rate-limit errors without treating them as range limits', () => {
-    const error = new Error('Request exceeds defined limit. Details: rate limit exceeded')
+  test('recognises genuine provider throttling without treating it as a range limit', () => {
+    const error = new Error('rate limit exceeded')
     expect(isRateLimitError(error)).toBe(true)
     expect(isRangeLimitError(error)).toBe(false)
   })
@@ -115,10 +115,32 @@ describe('Arc RPC error classification', () => {
     expect(isRateLimitError(error)).toBe(false)
   })
 
-  test('does not split Arc requests when the same response identifies throttling', () => {
+  test('splits Arc request-size errors even when details contain generic rate-limit wording', async () => {
     const error = new Error('Request exceeds defined limit. Details: rate limit exceeded')
-    expect(isRateLimitError(error)).toBe(true)
-    expect(isRangeLimitError(error)).toBe(false)
+    expect(isRangeLimitError(error)).toBe(true)
+    expect(isRateLimitError(error)).toBe(false)
+
+    const ranges: Array<[bigint, bigint]> = []
+    const client = {
+      getLogs: async ({ fromBlock, toBlock }: { fromBlock: bigint; toBlock: bigint }) => {
+        ranges.push([fromBlock, toBlock])
+        if (toBlock - fromBlock + 1n > 5_000n) throw error
+        return []
+      },
+    } as unknown as PublicClient
+
+    await getLogsChunked(client, {
+      address: '0x0000000000000000000000000000000000000001' as Address,
+      event: { type: 'event', name: 'LeaseCreated', inputs: [] } as never,
+      fromBlock: 0n,
+      toBlock: 9_999n,
+    })
+
+    expect(ranges).toEqual([
+      [0n, 9_999n],
+      [0n, 4_999n],
+      [5_000n, 9_999n],
+    ])
   })
 })
 
