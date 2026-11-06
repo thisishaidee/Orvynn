@@ -1,4 +1,5 @@
 import { formatUnits, type Address, type Hex } from 'viem'
+import type { LeaseStatus } from '@/lib/lease-status'
 
 /**
  * Domain model for the frontend. These types mirror what the AgentPay contract stores.
