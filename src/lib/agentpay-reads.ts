@@ -402,7 +402,10 @@ export function useOwnerLeases(): DataSource<Lease> {
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
-  if (query.isError && !query.data) {
+  // initialData may be an empty cached array. A failed live refresh must not
+  // turn that stale snapshot into a successful empty lease list; activity
+  // depends on this state and must wait until authoritative discovery succeeds.
+  if (query.isError) {
     return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
   }
   return {
