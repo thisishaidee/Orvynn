@@ -16,6 +16,7 @@ import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
 import { getActivityLogsChunked, getLogsChunked, isRateLimitError } from '@/lib/agentpay-logs'
 import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
+import { loadIncrementalEventHistory } from '@/lib/incremental-event-history'
 
 
 export type ReadGate =
@@ -80,6 +81,7 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
 async function discoverLeases(
   client: PublicClient,
   contract: Address,
+  chainId: number,
   filter: { owner?: Address; delegate?: Address },
   fromBlock: bigint,
   includeAllowlistHistory = true,
@@ -188,22 +190,45 @@ async function discoverLeases(
   let allowlistHistoryAvailable = true
   if (includeAllowlistHistory && allowlistLeaseIds.length > 0) {
     try {
-      for (let offset = 0; offset < allowlistLeaseIds.length; offset += 100) {
-        const allowlistLogs = await getLogsChunked(client, {
-          address: contract,
-          event: eventAbi('AllowlistUpdated') as never,
-          args: { leaseId: allowlistLeaseIds.slice(offset, offset + 100) },
-          fromBlock,
-          toBlock: snapshot,
-        })
-        for (const log of allowlistLogs) {
-          const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
-          if (args.leaseId === undefined || !args.recipient) continue
-          const key = args.leaseId.toString()
-          const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
-          permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
-          allowedByLease.set(key, permissions)
+      const loadAllowlistLogs = async (scanFrom: bigint, scanTo: bigint) => {
+        const allLogs: Awaited<ReturnType<typeof getLogsChunked>> = []
+        for (let offset = 0; offset < allowlistLeaseIds.length; offset += 100) {
+          allLogs.push(...await getLogsChunked(client, {
+            address: contract,
+            event: eventAbi('AllowlistUpdated') as never,
+            args: { leaseId: allowlistLeaseIds.slice(offset, offset + 100) },
+            fromBlock: scanFrom,
+            toBlock: scanTo,
+          }))
         }
+        return allLogs
+      }
+      const allowlistLogs = filter.owner
+        ? (await loadIncrementalEventHistory({
+            identity: {
+              chainId,
+              contract,
+              wallet: filter.owner,
+              scope: 'owner-allowlist',
+              filterKey: [...allowlistLeaseIds].sort((a, b) => a < b ? -1 : a > b ? 1 : 0).map((id) => id.toString()).join(','),
+            },
+            deploymentBlock: fromBlock,
+            snapshotBlock: snapshot,
+            getBlockHash: async (block) => {
+              const result = await client.getBlock({ blockNumber: block })
+              if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
+              return result.hash
+            },
+            scan: loadAllowlistLogs,
+          })).events
+        : await loadAllowlistLogs(fromBlock, snapshot)
+      for (const log of allowlistLogs) {
+        const args = (log as unknown as { args: { leaseId?: bigint; recipient?: Address; allowed?: boolean } }).args
+        if (args.leaseId === undefined || !args.recipient) continue
+        const key = args.leaseId.toString()
+        const permissions = allowedByLease.get(key) ?? new Map<string, boolean>()
+        permissions.set(args.recipient.toLowerCase(), Boolean(args.allowed))
+        allowedByLease.set(key, permissions)
       }
     } catch {
       allowlistHistoryAvailable = false
@@ -289,7 +314,7 @@ export function useDelegateLeases(): DataSource<Lease> {
     initialDataUpdatedAt: Date.now(),
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { delegate: gate.address }, getAgentPayEventStartBlock(gate.chainId), false)
+      return discoverLeases(gate.client, gate.contract, gate.chainId, { delegate: gate.address }, getAgentPayEventStartBlock(gate.chainId), false)
     },
   })
 
@@ -367,7 +392,7 @@ export function useOwnerLeases(): DataSource<Lease> {
     initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
+      return discoverLeases(gate.client, gate.contract, gate.chainId, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
@@ -399,6 +424,8 @@ function eventAbi(name: string) {
 async function discoverActivity(
   client: PublicClient,
   contract: Address,
+  chainId: number,
+  wallet: Address,
   leases: Lease[],
   fromBlock: bigint,
 ): Promise<ActivityItem[]> {
@@ -411,13 +438,29 @@ async function discoverActivity(
   // retrieves the complete relevant history for this snapshot.
   const snapshot = await client.getBlockNumber()
   const eventNames = ['LeaseCreated', 'Deposited', 'Withdrawn', 'Spent', 'Revoked', 'AllowlistUpdated'] as const
-  const logs = await getActivityLogsChunked(client, {
-    address: contract,
-    events: eventNames.map((name) => eventAbi(name)),
-    leaseIds,
-    fromBlock,
-    toBlock: snapshot,
-  })
+  const logs = (await loadIncrementalEventHistory({
+    identity: {
+      chainId,
+      contract,
+      wallet,
+      scope: 'activity',
+      filterKey: [...leaseIds].sort((a, b) => a < b ? -1 : a > b ? 1 : 0).map((id) => id.toString()).join(','),
+    },
+    deploymentBlock: fromBlock,
+    snapshotBlock: snapshot,
+    getBlockHash: async (block) => {
+      const result = await client.getBlock({ blockNumber: block })
+      if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
+      return result.hash
+    },
+    scan: (scanFrom, scanTo) => getActivityLogsChunked(client, {
+      address: contract,
+      events: eventNames.map((name) => eventAbi(name)),
+      leaseIds,
+      fromBlock: scanFrom,
+      toBlock: scanTo,
+    }),
+  })).events
 
   const times = await getBlockTimestamps(
     client,
@@ -472,7 +515,7 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     retry: 1,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverActivity(gate.client, gate.contract, leases, getAgentPayEventStartBlock(gate.chainId))
+      return discoverActivity(gate.client, gate.contract, gate.chainId, gate.address, leases, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
