@@ -115,8 +115,16 @@ export function mergeEventHistory<T extends EventHistoryItem>(...batches: readon
   const unique = new Map<string, T>()
   for (const batch of batches) {
     for (const item of batch) {
-      if (!item.transactionHash || item.logIndex === null || item.logIndex === undefined) {
-        throw new Error('Cannot cache an event without transaction hash and log index.')
+      if (
+        !item.transactionHash ||
+        typeof item.transactionHash !== 'string' ||
+        item.logIndex === null ||
+        item.logIndex === undefined ||
+        !Number.isSafeInteger(item.logIndex) ||
+        item.logIndex < 0 ||
+        (item.blockNumber !== null && typeof item.blockNumber !== 'bigint')
+      ) {
+        throw new Error('Cannot cache an event without valid block and log identity metadata.')
       }
       const key = `${item.transactionHash.toLowerCase()}:${item.logIndex}`
       unique.set(key, item)
