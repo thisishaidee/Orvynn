@@ -9,7 +9,7 @@ import {
   serializeEventHistory,
   type EventHistoryCheckpoint,
 } from './event-history-cache'
-import { readStoredEventHistory, writeStoredEventHistory, type EventHistoryStorage } from './event-history-storage'
+import { MAX_EVENT_HISTORY_CACHE_CHARS, readStoredEventHistory, writeStoredEventHistory, type EventHistoryStorage } from './event-history-storage'
 import { loadIncrementalEventHistory } from './incremental-event-history'
 
 const identity = {
@@ -266,6 +266,24 @@ describe('event history cache primitives', () => {
     const second = { blockNumber: 11n, transactionHash: '0xBB', logIndex: 0, label: 'first' }
     const duplicate = { ...first, transactionHash: '0xaa', label: 'duplicate' }
     assert.deepEqual(mergeEventHistory([first, second], [duplicate]), [second, duplicate])
+  })
+
+  it('rejects events with invalid log identity metadata', () => {
+    assert.throws(
+      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: '0xabc', logIndex: -1 }]),
+      /valid block and log identity metadata/,
+    )
+  })
+
+  it('removes oversized stored cache entries before parsing', () => {
+    const values = new Map<string, string>([['key', 'x'.repeat(MAX_EVENT_HISTORY_CACHE_CHARS + 1)]])
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    assert.equal(readStoredEventHistory(storage, 'key', identity), undefined)
+    assert.equal(values.has('key'), false)
   })
 
   it('refuses events without a stable log identity', () => {
