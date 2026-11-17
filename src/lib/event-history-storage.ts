@@ -70,8 +70,15 @@ export function readStoredEventHistory<T>(
   try {
     const raw = storage.getItem(key)
     if (!raw) return undefined
+    if (raw.length > MAX_EVENT_HISTORY_CACHE_CHARS) {
+      storage.removeItem(key)
+      return undefined
+    }
     const envelope: unknown = JSON.parse(raw)
-    if (!envelope || typeof envelope !== 'object') return undefined
+    if (!envelope || typeof envelope !== 'object') {
+      storage.removeItem(key)
+      return undefined
+    }
     const value = envelope as Partial<CacheEnvelope>
     if (
       value.version !== 1 ||
