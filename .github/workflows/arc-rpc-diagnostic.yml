@@ -1,0 +1,21 @@
+name: Arc RPC read-only diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostic/arc-rpc-read-check
+
+permissions:
+  contents: read
+
+jobs:
+  read-contract-state:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - run: bun install --frozen-lockfile
+      - name: Read chain identity and AgentPay state (no signing or writes)
+        run: bun run scripts/diagnose-arc-rpc.ts
