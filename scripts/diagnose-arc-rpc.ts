@@ -60,7 +60,7 @@ for (const network of networks) {
         blockNumber: blockNumber.toString(),
         nextLeaseId: nextLeaseId.toString(),
       }
-      if (network.name === 'Arc Testnet' && nextLeaseId > leaseId) {
+      if (nextLeaseId > leaseId) {
         const [lease, remaining] = await Promise.all([
           client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [leaseId], blockNumber }),
           client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [leaseId], blockNumber }),
@@ -78,6 +78,7 @@ for (const network of networks) {
           allowlistEnabled: lease[9],
           revoked: lease[10],
           remainingAllowance: remaining.toString(),
+          ownerMatchesReportedWallet: lease[0].toLowerCase() === '0x02a954017a71615af0c202406bede d250901ad8ba'.replaceAll(' ', ''),
         }
       }
       console.log(JSON.stringify(result))
