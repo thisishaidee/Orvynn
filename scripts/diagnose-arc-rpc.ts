@@ -78,7 +78,7 @@ for (const network of networks) {
           allowlistEnabled: lease[9],
           revoked: lease[10],
           remainingAllowance: remaining.toString(),
-          ownerMatchesReportedWallet: lease[0].toLowerCase() === '0x02a954017a71615af0c202406bede d250901ad8ba'.replaceAll(' ', ''),
+          ownerMatchesReportedWallet: lease[0].toLowerCase() === '0x02a954017a71615af0c202406bded250901ad8ba',
         }
       }
       console.log(JSON.stringify(result))
