@@ -1,28 +1,32 @@
-import { describe, expect, test } from 'bun:test'
+import { describe, it } from 'node:test'
+import assert from 'node:assert/strict'
 import { getLeaseReadFailure } from './agentpay-reads'
 
 describe('getLeaseReadFailure', () => {
-  test('surfaces a failed refresh even when cached initial data exists', () => {
+  it('surfaces a failed refresh even when cached initial data exists', () => {
     const cachedQuery = {
       isError: true,
       error: new Error('RPC request timed out'),
       data: [],
     }
 
-    expect(getLeaseReadFailure(cachedQuery, 'The lease read failed.')).toBe('RPC request timed out')
+    assert.equal(getLeaseReadFailure(cachedQuery, 'The lease read failed.'), 'RPC request timed out')
   })
 
-  test('uses the fallback message when the failed query has no Error object', () => {
-    expect(getLeaseReadFailure(
-      { isError: true, error: { code: 'UPSTREAM_ERROR' } },
+  it('uses the fallback message when the failed query has no Error object', () => {
+    assert.equal(
+      getLeaseReadFailure(
+        { isError: true, error: { code: 'UPSTREAM_ERROR' } },
+        'The delegate lease read failed.',
+      ),
       'The delegate lease read failed.',
-    )).toBe('The delegate lease read failed.')
+    )
   })
 
-  test('does not report a failure for a successful query', () => {
-    expect(getLeaseReadFailure(
-      { isError: false, error: undefined },
-      'The lease read failed.',
-    )).toBeUndefined()
+  it('does not report a failure for a successful query', () => {
+    assert.equal(
+      getLeaseReadFailure({ isError: false, error: undefined }, 'The lease read failed.'),
+      undefined,
+    )
   })
 })
