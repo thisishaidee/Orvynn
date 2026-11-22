@@ -15,8 +15,10 @@ registerChain(arc.id, arc.rpcUrls.default.http[0])
 registerChain(arcTestnet.id, arcTestnet.rpcUrls.default.http[0])
 
 const arcMainnetTransport = fallback([
+  // Prefer Arc's official mainnet RPC. Arcscan's gateway currently returns
+  // Cloudflare Tunnel 1033, so keep it only as a secondary fallback.
+  http('https://rpc.mainnet.arc.io'),
   http('https://rpc.arc-scan.org'),
-  http(arc.rpcUrls.default.http[0]),
 ])
 
 // Arc Testnet's public endpoint can reject even narrow eth_getLogs filters.
