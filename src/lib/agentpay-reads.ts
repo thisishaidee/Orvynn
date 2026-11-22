@@ -409,7 +409,10 @@ export function useOwnerLeases(): DataSource<Lease> {
   // `isError` to false even though a background refetch can fail at runtime.
   const queryFailure = query as { isError: boolean; error: unknown }
   if (queryFailure.isError) {
-    return { state: 'error', items: [], reason: queryFailure.error instanceof Error ? queryFailure.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
+    const reason = queryFailure.error instanceof Error
+      ? queryFailure.error.message
+      : 'The lease read failed.'
+    return { state: 'error', items: [], reason, refetch: () => void query.refetch() }
   }
   return {
     state: 'ready',
