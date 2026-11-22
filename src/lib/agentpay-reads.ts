@@ -299,7 +299,14 @@ export function useDelegateLeases(): DataSource<Lease> {
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
-  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
+  // Cached delegate snapshots are also non-authoritative after a failed refresh.
+  const queryFailure = query as { isError: boolean; error: unknown }
+  if (queryFailure.isError) {
+    const reason = queryFailure.error instanceof Error
+      ? queryFailure.error.message
+      : 'The delegate lease read failed.'
+    return { state: 'error', items: [], reason, refetch: () => void query.refetch() }
+  }
   return {
     state: 'ready',
     items: query.data ?? [],
