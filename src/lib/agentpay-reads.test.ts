@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { getLeaseReadFailure } from './agentpay-reads'
+import { getLeaseReadFailure } from './lease-query-state'
 
 describe('getLeaseReadFailure', () => {
   it('surfaces a failed refresh even when cached initial data exists', () => {
