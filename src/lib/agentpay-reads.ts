@@ -16,18 +16,8 @@ import { activityAgent, currentPeriodSpent } from '@/lib/agentpay-accounting'
 import { getActivityLogsChunked, getLogsChunked, isRateLimitError } from '@/lib/agentpay-logs'
 import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
+import { getLeaseReadFailure } from '@/lib/lease-query-state'
 
-
-/** Return a visible failure even when React Query retains cached initialData. */
-export function getLeaseReadFailure(
-  query: { isError: boolean; error: unknown },
-  fallbackMessage: string,
-): string | undefined {
-  if (!query.isError) return undefined
-  return query.error instanceof Error && query.error.message
-    ? query.error.message
-    : fallbackMessage
-}
 
 export type ReadGate =
   | { ok: false; state: 'disconnected' | 'unsupported-network' | 'missing-address'; reason: string }
