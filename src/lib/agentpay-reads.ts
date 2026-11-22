@@ -18,6 +18,17 @@ import { getAgentPayEventStartBlock } from '@/lib/agentpay-deployment'
 import { getBlockTimestamps } from '@/lib/block-timestamps'
 
 
+/** Return a visible failure even when React Query retains cached initialData. */
+export function getLeaseReadFailure(
+  query: { isError: boolean; error: unknown },
+  fallbackMessage: string,
+): string | undefined {
+  if (!query.isError) return undefined
+  return query.error instanceof Error && query.error.message
+    ? query.error.message
+    : fallbackMessage
+}
+
 export type ReadGate =
   | { ok: false; state: 'disconnected' | 'unsupported-network' | 'missing-address'; reason: string }
   | { ok: true; address: Address; chainId: number; contract: Address; client: PublicClient }
@@ -300,11 +311,8 @@ export function useDelegateLeases(): DataSource<Lease> {
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
   // Cached delegate snapshots are also non-authoritative after a failed refresh.
-  const queryFailure = query as { isError: boolean; error: unknown }
-  if (queryFailure.isError) {
-    const reason = queryFailure.error instanceof Error
-      ? queryFailure.error.message
-      : 'The delegate lease read failed.'
+  const reason = getLeaseReadFailure(query as { isError: boolean; error: unknown }, 'The delegate lease read failed.')
+  if (reason !== undefined) {
     return { state: 'error', items: [], reason, refetch: () => void query.refetch() }
   }
   return {
@@ -386,11 +394,8 @@ export function useOwnerLeases(): DataSource<Lease> {
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
   // A cached empty array is defined data, but it is not authoritative when
   // the background contract refresh fails. Surface that failure to dependents.
-  const queryFailure = query as { isError: boolean; error: unknown }
-  if (queryFailure.isError) {
-    const reason = queryFailure.error instanceof Error
-      ? queryFailure.error.message
-      : 'The lease read failed.'
+  const reason = getLeaseReadFailure(query as { isError: boolean; error: unknown }, 'The lease read failed.')
+  if (reason !== undefined) {
     return { state: 'error', items: [], reason, refetch: () => void query.refetch() }
   }
   return {
