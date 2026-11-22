@@ -377,8 +377,14 @@ export function useOwnerLeases(): DataSource<Lease> {
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
-  if (query.isError && !query.data) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
+  // A cached empty array is defined data, but it is not authoritative when
+  // the background contract refresh fails. Surface that failure to dependents.
+  const queryFailure = query as { isError: boolean; error: unknown }
+  if (queryFailure.isError) {
+    const reason = queryFailure.error instanceof Error
+      ? queryFailure.error.message
+      : 'The lease read failed.'
+    return { state: 'error', items: [], reason, refetch: () => void query.refetch() }
   }
   return {
     state: 'ready',
