@@ -405,8 +405,11 @@ export function useOwnerLeases(): DataSource<Lease> {
   // initialData may be an empty cached array. A failed live refresh must not
   // turn that stale snapshot into a successful empty lease list; activity
   // depends on this state and must wait until authoritative discovery succeeds.
-  if (query.isError) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
+  // TanStack Query types initialData as a defined result, which narrows
+  // `isError` to false even though a background refetch can fail at runtime.
+  const queryFailure = query as { isError: boolean; error: unknown }
+  if (queryFailure.isError) {
+    return { state: 'error', items: [], reason: queryFailure.error instanceof Error ? queryFailure.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
   }
   return {
     state: 'ready',
