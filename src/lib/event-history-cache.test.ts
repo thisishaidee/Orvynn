@@ -73,6 +73,19 @@ describe('event history cache primitives', () => {
     assert.equal(values.has('key'), false)
   })
 
+  it('discards cached arrays containing malformed event records', () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+    values.set('key', JSON.stringify({ version: 1, identity, checkpoint: saved, events: serializeEventHistory([{ blockNumber: 1200n }]) }))
+    assert.equal(readStoredEventHistory(storage, 'key', identity), undefined)
+    assert.equal(values.has('key'), false)
+  })
+
   it('skips oversized cache writes without replacing the existing checkpoint', () => {
     const values = new Map<string, string>([['key', 'previous-cache-value']])
     const storage: EventHistoryStorage = {
