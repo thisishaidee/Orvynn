@@ -60,6 +60,16 @@ export function getBrowserEventHistoryStorage(): EventHistoryStorage | undefined
   }
 }
 
+function isCachedEventArray(value: unknown): value is unknown[] {
+  return Array.isArray(value) && value.every((event) => {
+    if (!event || typeof event !== 'object') return false
+    const item = event as { blockNumber?: unknown; transactionHash?: unknown; logIndex?: unknown }
+    return typeof item.blockNumber === 'bigint' &&
+      typeof item.transactionHash === 'string' && /^0x[0-9a-f]{64}$/i.test(item.transactionHash) &&
+      typeof item.logIndex === 'number' && Number.isSafeInteger(item.logIndex) && item.logIndex >= 0
+  })
+}
+
 /** Read only a complete, correctly scoped cache envelope. Invalid data is discarded. */
 export function readStoredEventHistory<T>(
   storage: EventHistoryStorage | undefined,
@@ -92,7 +102,7 @@ export function readStoredEventHistory<T>(
       return undefined
     }
     const events = parseEventHistory<T>(value.events)
-    if (!events) {
+    if (!events || !isCachedEventArray(events)) {
       storage.removeItem(key)
       return undefined
     }
