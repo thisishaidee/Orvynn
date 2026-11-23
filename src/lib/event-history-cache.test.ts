@@ -56,7 +56,7 @@ describe('event history cache primitives', () => {
       setItem: (key, value) => { values.set(key, value) },
       removeItem: (key) => { values.delete(key) },
     }
-    const events = [{ blockNumber: 1200n, transactionHash: '0xabc', logIndex: 0, args: { leaseId: 7n } }]
+    const events = [{ blockNumber: 1200n, transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logIndex: 0, args: { leaseId: 7n } }]
     const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
     assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, events), true)
     assert.deepEqual(readStoredEventHistory<typeof events[number]>(storage, 'key', identity), { checkpoint: saved, events })
@@ -121,7 +121,7 @@ describe('event history cache primitives', () => {
       setItem: (key, value) => { values.set(key, value) },
       removeItem: (key) => { values.delete(key) },
     }
-    const original = [{ blockNumber: 1000n, transactionHash: '0xold', logIndex: 0 }]
+    const original = [{ blockNumber: 1000n, transactionHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', logIndex: 0 }]
     const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1000n, blockHash: hashA, complete: true })
     writeStoredEventHistory(storage, eventHistoryCacheKey(identity), identity, saved, original)
     const scanned: Array<[bigint, bigint]> = []
@@ -133,7 +133,7 @@ describe('event history cache primitives', () => {
       getBlockHash: async (block) => block === 1000n ? hashA : hashB,
       scan: async (from, to) => {
         scanned.push([from, to])
-        return [{ blockNumber: 1090n, transactionHash: '0xnew', logIndex: 0 }]
+        return [{ blockNumber: 1090n, transactionHash: '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc', logIndex: 0 }]
       },
     })
     assert.equal(result.mode, 'incremental')
@@ -177,7 +177,7 @@ describe('event history cache primitives', () => {
       setItem: (key, value) => { values.set(key, value) },
       removeItem: (key) => { values.delete(key) },
     }
-    const original = [{ blockNumber: 1000n, transactionHash: '0xoriginal', logIndex: 0 }]
+    const original = [{ blockNumber: 1000n, transactionHash: '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd', logIndex: 0 }]
     const saved = advanceEventHistoryCheckpoint({
       identity, throughBlock: 1000n, blockHash: hashA, complete: true,
     })
@@ -210,7 +210,7 @@ describe('event history cache primitives', () => {
       identity, throughBlock: 1000n, blockHash: hashA, complete: true,
     })
     writeStoredEventHistory(storage, eventHistoryCacheKey(identity), identity, saved, [
-      { blockNumber: 1000n, transactionHash: '0xold', logIndex: 0 },
+      { blockNumber: 1000n, transactionHash: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', logIndex: 0 },
     ])
     const requestedBlocks: bigint[] = []
     const scanned: Array<[bigint, bigint]> = []
@@ -226,13 +226,13 @@ describe('event history cache primitives', () => {
       },
       scan: async (from, to) => {
         scanned.push([from, to])
-        return [{ blockNumber: to, transactionHash: '0xrebuilt', logIndex: 0 }]
+        return [{ blockNumber: to, transactionHash: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', logIndex: 0 }]
       },
     })
     assert.equal(result.mode, 'rebuild')
     assert.deepEqual(scanned, [[100n, 900n]])
     assert.deepEqual(requestedBlocks, [900n, 900n])
-    assert.deepEqual(result.events.map((event) => event.transactionHash), ['0xrebuilt'])
+    assert.deepEqual(result.events.map((event) => event.transactionHash), ['0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'])
   })
 
   it('starts a first scan at deployment block', () => {
@@ -275,15 +275,15 @@ describe('event history cache primitives', () => {
   })
 
   it('deduplicates overlapping logs and sorts by block then log index', () => {
-    const first = { blockNumber: 12n, transactionHash: '0xAA', logIndex: 2, label: 'second' }
-    const second = { blockNumber: 11n, transactionHash: '0xBB', logIndex: 0, label: 'first' }
-    const duplicate = { ...first, transactionHash: '0xaa', label: 'duplicate' }
+    const first = { blockNumber: 12n, transactionHash: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', logIndex: 2, label: 'second' }
+    const second = { blockNumber: 11n, transactionHash: '0x1111111111111111111111111111111111111111111111111111111111111111', logIndex: 0, label: 'first' }
+    const duplicate = { ...first, transactionHash: '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff', label: 'duplicate' }
     assert.deepEqual(mergeEventHistory([first, second], [duplicate]), [second, duplicate])
   })
 
   it('rejects events with invalid log identity metadata', () => {
     assert.throws(
-      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: '0xabc', logIndex: -1 }]),
+      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logIndex: -1 }]),
       /valid block and log identity metadata/,
     )
   })
