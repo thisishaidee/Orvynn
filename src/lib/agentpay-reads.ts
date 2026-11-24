@@ -297,7 +297,7 @@ export function useDelegateLeases(): DataSource<Lease> {
     if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
   }, [cacheKey, query.data])
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
   if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
   return {
