@@ -23,6 +23,8 @@ const MAX_RPC_REQUESTS = 10_000
 const CONCURRENCY = 3
 const MAX_RATE_LIMIT_RETRIES = 5
 const RATE_LIMIT_BASE_DELAY_MS = 500
+const MAX_INTERNAL_ERROR_RETRIES = 2
+const INTERNAL_ERROR_BASE_DELAY_MS = 300
 const RPC_LOG_REQUEST_TIMEOUT_MS = 10_000
 const MAX_LEASE_IDS_PER_QUERY = 100
 
@@ -119,6 +121,36 @@ function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
+/** Detect provider-side JSON-RPC internal errors that may be transient or range-specific. */
+export function isInternalRpcError(error: unknown): boolean {
+  const seen = new Set<unknown>()
+  const parts: string[] = []
+  const pending: unknown[] = [error]
+
+  while (pending.length > 0) {
+    const current = pending.pop()
+    if (current === null || current === undefined || seen.has(current)) continue
+    if (typeof current === 'string') {
+      parts.push(current)
+      continue
+    }
+    if (typeof current !== 'object') continue
+    seen.add(current)
+
+    const value = current as Record<string, unknown>
+    for (const key of ['message', 'shortMessage', 'details', 'code', 'status', 'statusCode']) {
+      const item = value[key]
+      if (typeof item === 'string' || typeof item === 'number') parts.push(String(item))
+    }
+    for (const key of ['cause', 'error', 'data']) {
+      if (value[key] && typeof value[key] === 'object') pending.push(value[key])
+    }
+  }
+
+  const detail = parts.join(' ').toLowerCase()
+  return /internal error|internal json-rpc|\\b-32603\\b|\b-32603\b|server error/.test(detail)
+}
+
 /**
  * Only split requests when the provider explicitly signals a query/range limit.
  * Rate limits are retried with backoff at the same range; timeouts and transport
@@ -188,6 +220,7 @@ async function fetchChunkedRanges<T>(
     requests += 1
 
     let rateLimitRetries = 0
+    let internalErrorRetries = 0
     while (true) {
       try {
         return await withLogRequestTimeout(from, to, fetchRange(from, to))
@@ -206,7 +239,18 @@ async function fetchChunkedRanges<T>(
           continue
         }
 
-        if (!isRangeLimitError(error)) {
+        // QuickNode/Arc can return a generic JSON-RPC internal error for a
+        // particular eth_getLogs span. Retry the exact request briefly first;
+        // if it persists, reduce the span adaptively instead of failing the
+        // entire wallet history scan.
+        if (isInternalRpcError(error) && internalErrorRetries < MAX_INTERNAL_ERROR_RETRIES) {
+          const delay = INTERNAL_ERROR_BASE_DELAY_MS * (2 ** internalErrorRetries)
+          internalErrorRetries += 1
+          await wait(delay)
+          continue
+        }
+
+        if (!isRangeLimitError(error) && !isInternalRpcError(error)) {
           throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
         }
         if (to - from + 1n <= MIN_CHUNK) {
