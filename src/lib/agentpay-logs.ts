@@ -19,6 +19,7 @@ import { agentPayAbi } from '@/lib/agentpay-abi'
 
 const INITIAL_CHUNK = 10_000n
 const MIN_CHUNK = 1n
+const MIN_INTERNAL_ERROR_CHUNK = 32n
 const MAX_RPC_REQUESTS = 10_000
 const CONCURRENCY = 3
 const MAX_RATE_LIMIT_RETRIES = 5
@@ -252,6 +253,9 @@ async function fetchChunkedRanges<T>(
 
         if (!isRangeLimitError(error) && !isInternalRpcError(error)) {
           throw new Error(`Arc RPC failed while reading event history at blocks ${from}-${to}. ${detail}`)
+        }
+        if (isInternalRpcError(error) && to - from + 1n <= MIN_INTERNAL_ERROR_CHUNK) {
+          throw new Error(`Arc RPC internal error persisted for event history at blocks ${from}-${to}. ${detail}`)
         }
         if (to - from + 1n <= MIN_CHUNK) {
           throw new Error(`Arc RPC could not return event history at block ${from}. ${detail}`)
