@@ -122,7 +122,7 @@ export function writeStoredEventHistory<T>(
   checkpoint: EventHistoryCheckpoint,
   events: readonly T[],
 ): boolean {
-  if (!storage || !isCheckpoint(checkpoint) || !sameIdentity(checkpoint, identity)) return false
+  if (!storage || !isCheckpoint(checkpoint) || !sameIdentity(checkpoint, identity) || !isCachedEventArray(events)) return false
   try {
     const envelope: CacheEnvelope = {
       version: 1,
