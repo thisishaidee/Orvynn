@@ -172,7 +172,12 @@ export function LeasesPage() {
           </span>
         </Notice>
       )}
-      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setOpenLeaseIds([])} />
+      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={async (result) => {
+        setOpenLeaseIds([])
+        // A receipt-backed lease snapshot is already in the query cache. Only
+        // fall back to a full list read when receipt decoding was unavailable.
+        if (result.leaseId === undefined || result.leaseReadError) await source.refetch?.()
+      }} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
         title="Revoke this lease?"

@@ -77,6 +77,24 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
   }
 }
 
+/** Read one newly-created lease directly at its receipt block. */
+export async function readLeaseSnapshot(
+  client: PublicClient,
+  contract: Address,
+  id: bigint,
+  blockNumber: bigint,
+): Promise<Lease> {
+  const [row, remaining, block] = await Promise.all([
+    client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber }) as Promise<LeaseTuple>,
+    client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber }) as Promise<bigint>,
+    client.getBlock({ blockNumber }),
+  ])
+  if (row[0] === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`Lease ${id.toString()} was not present at its confirmed receipt block.`)
+  }
+  return toLease(id, row, remaining, row[9] ? [] : undefined, row[8] > 0n, block.timestamp)
+}
+
 async function discoverLeases(
   client: PublicClient,
   contract: Address,
@@ -84,29 +102,29 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Lease IDs are sequential. Read the current contract counter and inspect
-  // bounded storage batches instead of scanning years of LeaseCreated logs.
-  // Every read is pinned to one block so owner/delegate and allowance data
-  // describe the same chain snapshot.
+  // LeaseCreated indexes both owner and delegate. Discover only this wallet's
+  // lease IDs from the indexed event instead of walking every global lease ID.
+  // The old nextLeaseId loop made each wallet wait for unrelated users' leases.
   const snapshot = await client.getBlockNumber()
-  const [latest, nextLeaseId] = await Promise.all([
-    client.getBlock({ blockNumber: snapshot }),
-    client.readContract({
-      address: contract,
-      abi: agentPayAbi,
-      functionName: 'nextLeaseId',
-      blockNumber: snapshot,
-    }) as Promise<bigint>,
-  ])
+  const latest = await client.getBlock({ blockNumber: snapshot })
+  const leaseCreatedLogs = await getLogsChunked(client, {
+    address: contract,
+    event: eventAbi('LeaseCreated') as never,
+    args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
+    fromBlock,
+    toBlock: snapshot,
+  })
+
+  const leaseIds = [...new Set(leaseCreatedLogs
+    .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
+    .filter((id): id is bigint => id !== undefined)
+    .map((id) => id.toString()))].map((id) => BigInt(id))
 
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
 
-  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
-    const end = first + BigInt(batchSize) < nextLeaseId
-      ? first + BigInt(batchSize)
-      : nextLeaseId
-    const ids = Array.from({ length: Number(end - first) }, (_, index) => first + BigInt(index))
+  for (let first = 0; first < leaseIds.length; first += batchSize) {
+    const ids = leaseIds.slice(first, first + batchSize)
     const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
@@ -125,8 +143,6 @@ async function discoverLeases(
         remaining: values[index * 2 + 1] as bigint,
       }))
     } catch (error) {
-      // Do not fan out after a genuine throttle. For unsupported Multicall,
-      // fall back sequentially by lease while keeping each pair bounded.
       if (isRateLimitError(error)) throw error
       rows = []
       for (const id of ids) {
@@ -143,14 +159,7 @@ async function discoverLeases(
     }
 
     for (const item of rows) {
-      const matches = filter.owner
-        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
-        : filter.delegate
-          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
-          : false
-      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
-        matching.push(item)
-      }
+      if (item.row[0] !== '0x0000000000000000000000000000000000000000') matching.push(item)
     }
   }
 
@@ -297,16 +306,16 @@ export function useDelegateLeases(): DataSource<Lease> {
     if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
   }, [cacheKey, query.data])
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
-  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   return {
     state: 'ready',
     items: query.data ?? [],
     reason: '',
     refreshing: query.isFetching,
     refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
-    refetch: () => void query.refetch(),
+    refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error },
   }
 }
 
@@ -375,10 +384,10 @@ export function useOwnerLeases(): DataSource<Lease> {
     if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
   }, [cacheKey, query.data])
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   if (query.isError && !query.data) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   }
   return {
     state: 'ready',
@@ -386,7 +395,7 @@ export function useOwnerLeases(): DataSource<Lease> {
     reason: '',
     refreshing: query.isFetching,
     refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
-    refetch: () => void query.refetch(),
+    refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error },
   }
 }
 
@@ -476,13 +485,13 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     },
   })
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (!leasesReady) return { state: 'loading', items: [], reason: 'Waiting for lease discovery before reading activity.', refetch: () => void query.refetch() }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.', refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (!leasesReady) return { state: 'loading', items: [], reason: 'Waiting for lease discovery before reading activity.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   if (query.isError) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.', refetch: () => void query.refetch() }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   }
-  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
+  return { state: 'ready', items: query.data ?? [], reason: '', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
 }
 
 /** Activity for the connected owner. Waits for lease discovery so lease IDs are known. */

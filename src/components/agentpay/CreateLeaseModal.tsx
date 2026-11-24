@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
 import { Button, Field, Input, Modal, Notice, Select } from '@/components/ui'
-import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { useAgentPayTransactions, type TransactionResult } from '@/lib/agentpay-transactions'
 import { useUsdcBalance } from '@/lib/wallet'
 
 const periods = [
@@ -15,7 +15,7 @@ const periods = [
 export function CreateLeaseModal({ open, onClose, onCreated }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void
+  onCreated: (result: TransactionResult) => void | Promise<void>
 }) {
   const tx = useAgentPayTransactions()
   const walletBalance = useUsdcBalance()
@@ -62,10 +62,22 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         allowlistEnabled: allowlist,
         initialDeposit: 0n,
       })
-      toast.success('Lease created', { description: result.hash })
+      if (result.leaseReadError) {
+        toast.warning('Transaction confirmed; lease not yet visible', {
+          description: `Arc confirmed ${result.hash}, but Orvynn could not read lease ${result.leaseId?.toString() ?? 'from the receipt'}: ${result.leaseReadError}`,
+          duration: 12000,
+        })
+      } else {
+        toast.success('Lease created', { description: result.hash })
+      }
       walletBalance.refetch()
       reset()
-      onCreated()
+      try {
+        await onCreated(result)
+      } catch (refreshCause) {
+        const refreshMessage = refreshCause instanceof Error ? refreshCause.message : 'The lease list could not be refreshed.'
+        toast.error('Lease created, but the list did not refresh', { description: refreshMessage })
+      }
       onClose()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Lease creation failed.'
