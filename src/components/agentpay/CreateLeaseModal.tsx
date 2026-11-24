@@ -15,7 +15,7 @@ const periods = [
 export function CreateLeaseModal({ open, onClose, onCreated }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void
+  onCreated: () => void | Promise<void>
 }) {
   const tx = useAgentPayTransactions()
   const walletBalance = useUsdcBalance()
@@ -65,8 +65,13 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
       toast.success('Lease created', { description: result.hash })
       walletBalance.refetch()
       reset()
-      onCreated()
       onClose()
+      try {
+        await onCreated()
+      } catch (refreshCause) {
+        const refreshMessage = refreshCause instanceof Error ? refreshCause.message : 'The lease list could not be refreshed.'
+        toast.error('Lease created, but the list did not refresh', { description: refreshMessage })
+      }
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Lease creation failed.'
       setError(message)
