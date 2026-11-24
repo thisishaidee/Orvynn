@@ -68,7 +68,6 @@ describe('resumable incremental event history', () => {
     assert.deepEqual(scanned, [
       [100n, 10_099n],
       [10_100n, 10_100n],
-      [10_100n, 10_100n],
       [10_100n, 10_101n],
     ])
     assert.equal(result.events.length, 2)
