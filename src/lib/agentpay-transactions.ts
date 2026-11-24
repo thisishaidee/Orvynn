@@ -27,6 +27,7 @@ export type TransactionResult = {
   hash: Hash
   blockNumber: bigint
   leaseId?: bigint
+  leaseReadError?: string
 }
 
 export type TransactionState =
@@ -156,21 +157,30 @@ export function useAgentPayTransactions() {
       if (!createdLog) throw new Error('The confirmed receipt did not contain a LeaseCreated event.')
       const created = decodeEventLog({ abi: agentPayReadAbi, eventName: 'LeaseCreated', data: createdLog.data, topics: createdLog.topics })
       const leaseId = created.args.leaseId
-      const lease = await readLeaseSnapshot(publicClient, contract, leaseId, receipt.blockNumber)
+      // First read at the exact receipt block. If the RPC has not made that
+      // historical state available yet, retry against the latest confirmed head.
+      let lease: Lease
+      try {
+        lease = await readLeaseSnapshot(publicClient, contract, leaseId, receipt.blockNumber)
+      } catch {
+        const latestBlock = await publicClient.getBlockNumber()
+        lease = await readLeaseSnapshot(publicClient, contract, leaseId, latestBlock)
+      }
       queryClient.setQueryData<Lease[]>(['agentpay', 'leases', gate.ok ? gate.chainId : 0, contract, account], (current) => {
         const next = [...(current ?? []).filter((item) => item.id !== lease.id), lease]
         return next.sort((a, b) => Number(b.id) - Number(a.id))
       })
       void queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }).catch(() => undefined)
       return { ...result, leaseId }
-    } catch {
-      // The transaction is already confirmed. Fall back to normal chain refresh;
-      // never turn a successful createLease write into a reported transaction failure.
+    } catch (cause) {
+      // The chain write is confirmed, but the UI read failed. Preserve that
+      // distinction and surface the read error instead of silently saying done.
+      const leaseReadError = cause instanceof Error ? cause.message : String(cause)
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
         queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
       ]).catch(() => undefined)
-      return result
+      return { ...result, leaseReadError }
     }
   }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess, queryClient, gate])
 
