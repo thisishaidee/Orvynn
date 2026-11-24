@@ -298,15 +298,15 @@ export function useDelegateLeases(): DataSource<Lease> {
   }, [cacheKey, query.data])
 
   if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: () => void query.refetch() }
-  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: () => void query.refetch() }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases assigned to this agent wallet.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isError && !query.data) return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The delegate lease read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   return {
     state: 'ready',
     items: query.data ?? [],
     reason: '',
     refreshing: query.isFetching,
     refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
-    refetch: () => void query.refetch(),
+    refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error },
   }
 }
 
@@ -375,10 +375,10 @@ export function useOwnerLeases(): DataSource<Lease> {
     if (cacheKey && query.data) writeDelegateLeaseCache(cacheKey, query.data)
   }, [cacheKey, query.data])
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading leases from the Orvynn contract.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   if (query.isError && !query.data) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: () => void query.refetch() }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The lease read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   }
   return {
     state: 'ready',
@@ -386,7 +386,7 @@ export function useOwnerLeases(): DataSource<Lease> {
     reason: '',
     refreshing: query.isFetching,
     refreshError: query.isError ? (query.error instanceof Error ? query.error.message : 'The live lease refresh failed.') : undefined,
-    refetch: () => void query.refetch(),
+    refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error },
   }
 }
 
@@ -476,13 +476,13 @@ export function useOwnerActivity(leases: Lease[], leasesReady: boolean): DataSou
     },
   })
 
-  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: () => void query.refetch() }
-  if (!leasesReady) return { state: 'loading', items: [], reason: 'Waiting for lease discovery before reading activity.', refetch: () => void query.refetch() }
-  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.', refetch: () => void query.refetch() }
+  if (!gate.ok) return { state: gate.state, items: [], reason: gate.reason, refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (!leasesReady) return { state: 'loading', items: [], reason: 'Waiting for lease discovery before reading activity.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
+  if (query.isPending) return { state: 'loading', items: [], reason: 'Reading activity from the Orvynn contract.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   if (query.isError) {
-    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.', refetch: () => void query.refetch() }
+    return { state: 'error', items: [], reason: query.error instanceof Error ? query.error.message : 'The activity read failed.', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
   }
-  return { state: 'ready', items: query.data ?? [], reason: '', refetch: () => void query.refetch() }
+  return { state: 'ready', items: query.data ?? [], reason: '', refetch: async () => { const result = await query.refetch(); if (result.isError) throw result.error } }
 }
 
 /** Activity for the connected owner. Waits for lease discovery so lease IDs are known. */
