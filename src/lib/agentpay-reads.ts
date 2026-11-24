@@ -252,7 +252,10 @@ async function discoverLeases(
             deploymentBlock: fromBlock,
             snapshotBlock: snapshot,
             getBlockHash: async (block) => {
-              const result = await client.getBlock({ blockNumber: block })
+              const result = await withRpcReadTimeout(
+                `Arc RPC allowlist block-hash verification at block ${block} (eth_getBlockByNumber)`,
+                client.getBlock({ blockNumber: block }),
+              )
               if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
               return result.hash
             },
@@ -494,7 +497,10 @@ async function discoverActivity(
   // All six events index leaseId as their first indexed field. Query the
   // event-signature OR list and lease-ID OR list together so one RPC filter
   // retrieves the complete relevant history for this snapshot.
-  const snapshot = await client.getBlockNumber()
+  const snapshot = await withRpcReadTimeout(
+    'Arc RPC activity snapshot block-height request (eth_blockNumber)',
+    client.getBlockNumber(),
+  )
   const eventNames = ['LeaseCreated', 'Deposited', 'Withdrawn', 'Spent', 'Revoked', 'AllowlistUpdated'] as const
   const logs = (await loadIncrementalEventHistory({
     identity: {
@@ -507,7 +513,10 @@ async function discoverActivity(
     deploymentBlock: fromBlock,
     snapshotBlock: snapshot,
     getBlockHash: async (block) => {
-      const result = await client.getBlock({ blockNumber: block })
+      const result = await withRpcReadTimeout(
+        `Arc RPC activity block-hash verification at block ${block} (eth_getBlockByNumber)`,
+        client.getBlock({ blockNumber: block }),
+      )
       if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
       return result.hash
     },
