@@ -102,29 +102,29 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Lease IDs are sequential. Read the current contract counter and inspect
-  // bounded storage batches instead of scanning years of LeaseCreated logs.
-  // Every read is pinned to one block so owner/delegate and allowance data
-  // describe the same chain snapshot.
+  // LeaseCreated indexes both owner and delegate. Discover only this wallet's
+  // lease IDs from the indexed event instead of walking every global lease ID.
+  // The old nextLeaseId loop made each wallet wait for unrelated users' leases.
   const snapshot = await client.getBlockNumber()
-  const [latest, nextLeaseId] = await Promise.all([
-    client.getBlock({ blockNumber: snapshot }),
-    client.readContract({
-      address: contract,
-      abi: agentPayAbi,
-      functionName: 'nextLeaseId',
-      blockNumber: snapshot,
-    }) as Promise<bigint>,
-  ])
+  const latest = await client.getBlock({ blockNumber: snapshot })
+  const leaseCreatedLogs = await getLogsChunked(client, {
+    address: contract,
+    event: eventAbi('LeaseCreated') as never,
+    args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
+    fromBlock,
+    toBlock: snapshot,
+  })
+
+  const leaseIds = [...new Set(leaseCreatedLogs
+    .map((log) => (log as unknown as { args: { leaseId?: bigint } }).args.leaseId)
+    .filter((id): id is bigint => id !== undefined)
+    .map((id) => id.toString()))].map((id) => BigInt(id))
 
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
 
-  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
-    const end = first + BigInt(batchSize) < nextLeaseId
-      ? first + BigInt(batchSize)
-      : nextLeaseId
-    const ids = Array.from({ length: Number(end - first) }, (_, index) => first + BigInt(index))
+  for (let first = 0; first < leaseIds.length; first += batchSize) {
+    const ids = leaseIds.slice(first, first + batchSize)
     const contracts = ids.flatMap((id) => [
       { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
       { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
@@ -143,8 +143,6 @@ async function discoverLeases(
         remaining: values[index * 2 + 1] as bigint,
       }))
     } catch (error) {
-      // Do not fan out after a genuine throttle. For unsupported Multicall,
-      // fall back sequentially by lease while keeping each pair bounded.
       if (isRateLimitError(error)) throw error
       rows = []
       for (const id of ids) {
@@ -161,14 +159,7 @@ async function discoverLeases(
     }
 
     for (const item of rows) {
-      const matches = filter.owner
-        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
-        : filter.delegate
-          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
-          : false
-      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
-        matching.push(item)
-      }
+      if (item.row[0] !== '0x0000000000000000000000000000000000000000') matching.push(item)
     }
   }
 
