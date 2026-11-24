@@ -305,25 +305,6 @@ async function withRpcReadTimeout<T>(stage: string, operation: Promise<T>): Prom
   })
 }
 
-const LEASE_DISCOVERY_TIMEOUT_MS = 60_000
-
-/**
- * A stalled RPC must not leave the dashboard in a permanent loading state.
- * This bounds the UI query while preserving the original RPC error when it
- * completes first. A timed-out read is never treated as an empty lease list.
- */
-function withLeaseDiscoveryTimeout<T>(operation: Promise<T>): Promise<T> {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined
-  const timeout = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error('Arc RPC did not finish loading leases within 60 seconds. Check the Arc RPC connection and retry.'))
-    }, LEASE_DISCOVERY_TIMEOUT_MS)
-  })
-  return Promise.race([operation, timeout]).finally(() => {
-    if (timeoutId !== undefined) clearTimeout(timeoutId)
-  })
-}
-
 const DELEGATE_LEASE_CACHE_VERSION = 1
 
 function leaseCacheKey(role: 'owner' | 'delegate', chainId: number, contract: Address, wallet: Address): string {
@@ -469,9 +450,7 @@ export function useOwnerLeases(): DataSource<Lease> {
     initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
-      return withLeaseDiscoveryTimeout(
-        discoverLeases(gate.client, gate.contract, gate.chainId, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId)),
-      )
+      return discoverLeases(gate.client, gate.contract, gate.chainId, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
     },
   })
 
