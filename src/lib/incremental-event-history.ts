@@ -31,12 +31,12 @@ function progressKey(baseKey: string, from: bigint, to: bigint): string {
 }
 
 async function readProgress<T extends EventHistoryItem>(
-  storage: EventHistoryStorage | undefined,
-  key: string,
-  toBlock: bigint,
+  storage: EventHistoryStorage | undefined, key: string, toBlock: bigint,
   getBlockHash: (block: bigint) => Promise<string>,
 ): Promise<T[] | undefined> {
   if (!storage) return undefined
+  let blockHash: string
+  let events: T[]
   try {
     const raw = storage.getItem(key)
     if (!raw) return undefined
@@ -47,16 +47,23 @@ async function readProgress<T extends EventHistoryItem>(
     if (value.version !== 1 || value.throughBlock !== toBlock.toString() ||
       typeof value.blockHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value.blockHash) ||
       typeof value.events !== 'string') { storage.removeItem(key); return undefined }
-    // Reuse across newer snapshots only while the range's end block remains canonical.
-    const observedHash = await getBlockHash(toBlock)
-    if (observedHash.toLowerCase() !== value.blockHash.toLowerCase()) { storage.removeItem(key); return undefined }
-    const events = parseEventHistory<T>(value.events)
-    if (!events) { storage.removeItem(key); return undefined }
-    return mergeEventHistory(events)
+    const parsed = parseEventHistory<T>(value.events)
+    if (!parsed) { storage.removeItem(key); return undefined }
+    events = mergeEventHistory(parsed)
+    blockHash = value.blockHash
   } catch {
     try { storage.removeItem(key) } catch { /* Storage may be unavailable. */ }
     return undefined
   }
+  // A transient hash-read failure is not evidence of a reorg: retain the cache
+  // so a later retry can validate and reuse it.
+  let observedHash: string
+  try { observedHash = await getBlockHash(toBlock) } catch { return undefined }
+  if (observedHash.toLowerCase() !== blockHash.toLowerCase()) {
+    try { storage.removeItem(key) } catch { /* Storage may be unavailable. */ }
+    return undefined
+  }
+  return events
 }
 
 function writeProgress<T extends EventHistoryItem>(
@@ -79,8 +86,8 @@ function removeProgress(storage: EventHistoryStorage | undefined, keys: readonly
 
 /**
  * Loads one isolated event stream. Completed block ranges are persisted
- * independently against a pinned snapshot hash. A failed range can therefore
- * be retried without rescanning earlier ranges, while no partial scan is ever
+ * independently against each range's canonical end-block hash. Completed ranges
+ * can therefore survive a moving chain tip, while no partial scan is ever
  * promoted to a complete event-history checkpoint.
  */
 export async function loadIncrementalEventHistory<T extends EventHistoryItem>(input: {
@@ -169,8 +176,8 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
   const result = await execute(false)
   if (result) return result
 
-  // The observed chain changed during the scan. Rebuild once against a fresh,
-  // pinned snapshot; progress from the old hash is never reused.
+  // The observed chain changed during the scan. Rebuild once against a fresh
+  // snapshot; each cached range is independently checked against its end hash.
   const retry = await execute(true)
   if (!retry) throw new Error('Chain snapshot changed during event-history rebuild. Please retry.')
   return retry
