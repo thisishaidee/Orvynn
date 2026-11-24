@@ -9,7 +9,7 @@ import {
   type PublicClient,
 } from 'viem'
 import { agentPayAbi } from './agentpay-abi'
-import { getActivityLogsChunked } from './agentpay-logs'
+import { getActivityLogsChunked, isInternalRpcError, isRangeLimitError, isRateLimitError } from './agentpay-logs'
 
 const address = '0x1111111111111111111111111111111111111111' as Address
 const recipient = '0x2222222222222222222222222222222222222222' as Address
@@ -142,5 +142,22 @@ describe('getActivityLogsChunked', () => {
       fromBlock: 10n,
       toBlock: 20n,
     }), /unknown AgentPay event signature/)
+  })
+})
+
+describe('Arc RPC event-log error classification', () => {
+  it('recognizes generic JSON-RPC internal errors', () => {
+    assert.equal(isInternalRpcError(new Error('An internal error was received.')), true)
+    assert.equal(isInternalRpcError({ code: -32603, message: 'Internal error' }), true)
+  })
+
+  it('does not classify rate limits as internal errors', () => {
+    assert.equal(isInternalRpcError(new Error('rate limit exceeded')), false)
+    assert.equal(isRateLimitError(new Error('rate limit exceeded')), true)
+  })
+
+  it('keeps explicit range-limit detection separate', () => {
+    assert.equal(isRangeLimitError(new Error('query returned more than 10000 results')), true)
+    assert.equal(isRangeLimitError(new Error('An internal error was received.')), false)
   })
 })
