@@ -310,8 +310,21 @@ describe('event history cache primitives', () => {
   })
 
   it('rejects events with invalid log identity metadata', () => {
+    const validHash = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     assert.throws(
-      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logIndex: -1 }]),
+      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: validHash, logIndex: -1 }]),
+      /valid block and log identity metadata/,
+    )
+    assert.throws(
+      () => mergeEventHistory([{ blockNumber: null, transactionHash: validHash, logIndex: 0 }]),
+      /valid block and log identity metadata/,
+    )
+    assert.throws(
+      () => mergeEventHistory([{ blockNumber: -1n, transactionHash: validHash, logIndex: 0 }]),
+      /valid block and log identity metadata/,
+    )
+    assert.throws(
+      () => mergeEventHistory([{ blockNumber: 12n, transactionHash: '0xabc', logIndex: 0 }]),
       /valid block and log identity metadata/,
     )
   })
