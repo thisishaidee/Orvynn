@@ -176,7 +176,7 @@ export function LeasesPage() {
         setOpenLeaseIds([])
         // A receipt-backed lease snapshot is already in the query cache. Only
         // fall back to a full list read when receipt decoding was unavailable.
-        if (result.leaseId === undefined) await source.refetch?.()
+        if (result.leaseId === undefined || result.leaseReadError) await source.refetch?.()
       }} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
