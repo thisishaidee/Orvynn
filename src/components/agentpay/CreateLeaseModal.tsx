@@ -65,13 +65,13 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
       toast.success('Lease created', { description: result.hash })
       walletBalance.refetch()
       reset()
-      onClose()
       try {
         await onCreated()
       } catch (refreshCause) {
         const refreshMessage = refreshCause instanceof Error ? refreshCause.message : 'The lease list could not be refreshed.'
         toast.error('Lease created, but the list did not refresh', { description: refreshMessage })
       }
+      onClose()
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Lease creation failed.'
       setError(message)
