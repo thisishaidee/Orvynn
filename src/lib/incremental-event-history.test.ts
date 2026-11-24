@@ -101,7 +101,7 @@ describe('resumable incremental event history', () => {
       getBlockHash: async () => secondHash,
       scan: async (from, to) => {
         scanned.push([from, to])
-        return [event(from, 'f')]
+        return [event(from, from === 100n ? 'f' : 'g')]
       },
     })
 
