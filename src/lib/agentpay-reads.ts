@@ -98,37 +98,34 @@ async function discoverLeases(
   )
   const walletFilter = filter.owner ?? filter.delegate
   const historyScope = filter.owner ? 'owner-lease-created' as const : 'delegate-lease-created' as const
-  const createdLogs = await withRpcReadTimeout(
-    `AgentPay ${filter.owner ? 'owner' : 'delegate'} LeaseCreated history scan (eth_getLogs)`,
-    loadIncrementalEventHistory({
-      identity: {
-        chainId,
-        contract,
-        wallet: walletFilter!,
-        scope: historyScope,
-      },
-      deploymentBlock: fromBlock,
-      snapshotBlock: snapshot,
-      getBlockHash: async (block) => {
-        const result = await withRpcReadTimeout(
-          `Arc RPC block-hash verification at block ${block} (eth_getBlockByNumber)`,
-          client.getBlock({ blockNumber: block }),
-        )
-        if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
-        return result.hash
-      },
-      scan: async (scanFrom, scanTo) => withRpcReadTimeout(
-        'AgentPay filtered LeaseCreated event scan (eth_getLogs)',
-        getLogsChunked(client, {
-          address: contract,
-          event: eventAbi('LeaseCreated') as never,
-          args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
-          fromBlock: scanFrom,
-          toBlock: scanTo,
-        }),
-      ),
+  const createdLogs = await loadIncrementalEventHistory({
+    identity: {
+      chainId,
+      contract,
+      wallet: walletFilter!,
+      scope: historyScope,
+    },
+    deploymentBlock: fromBlock,
+    snapshotBlock: snapshot,
+    getBlockHash: async (block) => {
+      const result = await withRpcReadTimeout(
+        `Arc RPC block-hash verification at block ${block} (eth_getBlockByNumber)`,
+        client.getBlock({ blockNumber: block }),
+      )
+      if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
+      return result.hash
+    },
+    // getLogsChunked applies a timeout to each individual eth_getLogs request.
+    // Do not wrap the complete historical scan in a 10-second timeout: a
+    // successful multi-range scan can legitimately take longer than one RPC.
+    scan: (scanFrom, scanTo) => getLogsChunked(client, {
+      address: contract,
+      event: eventAbi('LeaseCreated') as never,
+      args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
+      fromBlock: scanFrom,
+      toBlock: scanTo,
     }),
-  )
+  })
   const leaseIds = [...new Set(createdLogs.events.flatMap((log) => {
     const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
     return leaseId !== undefined ? [leaseId] : []
