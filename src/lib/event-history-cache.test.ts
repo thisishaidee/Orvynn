@@ -99,6 +99,21 @@ describe('event history cache primitives', () => {
     assert.equal(values.has('key'), false)
   })
 
+  it('refuses event records with negative block numbers', () => {
+    const values = new Map<string, string>([['key', 'previous-cache-value']])
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+
+    assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, [
+      { blockNumber: -1n, transactionHash: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', logIndex: 0 },
+    ]), false)
+    assert.equal(values.get('key'), 'previous-cache-value')
+  })
+
   it('refuses to write malformed event records', () => {
     const values = new Map<string, string>([['key', 'previous-cache-value']])
     const storage: EventHistoryStorage = {
