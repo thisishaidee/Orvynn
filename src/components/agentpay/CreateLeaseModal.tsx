@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { isAddress, parseUnits, type Address } from 'viem'
 import { toast } from 'sonner'
 import { Button, Field, Input, Modal, Notice, Select } from '@/components/ui'
-import { useAgentPayTransactions } from '@/lib/agentpay-transactions'
+import { useAgentPayTransactions, type TransactionResult } from '@/lib/agentpay-transactions'
 import { useUsdcBalance } from '@/lib/wallet'
 
 const periods = [
@@ -15,7 +15,7 @@ const periods = [
 export function CreateLeaseModal({ open, onClose, onCreated }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void | Promise<void>
+  onCreated: (result: TransactionResult) => void | Promise<void>
 }) {
   const tx = useAgentPayTransactions()
   const walletBalance = useUsdcBalance()
@@ -66,7 +66,7 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
       walletBalance.refetch()
       reset()
       try {
-        await onCreated()
+        await onCreated(result)
       } catch (refreshCause) {
         const refreshMessage = refreshCause instanceof Error ? refreshCause.message : 'The lease list could not be refreshed.'
         toast.error('Lease created, but the list did not refresh', { description: refreshMessage })
