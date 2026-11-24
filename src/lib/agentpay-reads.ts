@@ -195,69 +195,6 @@ async function discoverLeases(
     }
   }
 
-  const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
-  const batchSize = 5
-
-  for (let first = 1n; first < nextLeaseId; first += BigInt(batchSize)) {
-    const end = first + BigInt(batchSize) < nextLeaseId
-      ? first + BigInt(batchSize)
-      : nextLeaseId
-    const ids = Array.from({ length: Number(end - first) }, (_, index) => first + BigInt(index))
-    const contracts = ids.flatMap((id) => [
-      { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
-      { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
-    ])
-
-    let rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }>
-    try {
-      const values = await withRpcReadTimeout(
-        `AgentPay lease batch multicall for IDs ${ids[0]}-${ids[ids.length - 1]} (eth_call)`,
-        client.multicall({
-          contracts: contracts as never,
-          blockNumber: snapshot,
-          allowFailure: false,
-        }) as Promise<unknown[]>,
-      )
-      rows = ids.map((id, index) => ({
-        id,
-        row: values[index * 2] as LeaseTuple,
-        remaining: values[index * 2 + 1] as bigint,
-      }))
-    } catch (error) {
-      // Do not fan out after a genuine throttle. For unsupported Multicall,
-      // fall back sequentially by lease while keeping each pair bounded.
-      if (isRateLimitError(error) || error instanceof RpcReadTimeoutError) throw error
-      rows = []
-      for (const id of ids) {
-        const [row, remaining] = await Promise.all([
-          withRpcReadTimeout(
-            `AgentPay leases(${id}) contract read (eth_call)`,
-            client.readContract({
-              address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
-            }) as Promise<LeaseTuple>,
-          ),
-          withRpcReadTimeout(
-            `AgentPay remainingAllowance(${id}) contract read (eth_call)`,
-            client.readContract({
-              address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
-            }) as Promise<bigint>,
-          ),
-        ])
-        rows.push({ id, row, remaining })
-      }
-    }
-
-    for (const item of rows) {
-      const matches = filter.owner
-        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
-        : filter.delegate
-          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
-          : false
-      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
-        matching.push(item)
-      }
-    }
-  }
 
   if (matching.length === 0) return []
 
