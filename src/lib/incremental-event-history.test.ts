@@ -56,7 +56,7 @@ describe('resumable incremental event history', () => {
     const result = await loadIncrementalEventHistory({
       identity,
       deploymentBlock: 100n,
-      snapshotBlock: 10_100n,
+      snapshotBlock: 10_101n,
       storage,
       getBlockHash: async () => snapshotHash,
       scan: async (from, to) => {
@@ -69,9 +69,10 @@ describe('resumable incremental event history', () => {
       [100n, 10_099n],
       [10_100n, 10_100n],
       [10_100n, 10_100n],
+      [10_100n, 10_101n],
     ])
     assert.equal(result.events.length, 2)
-    assert.equal(result.checkpoint.throughBlock, '10100')
+    assert.equal(result.checkpoint.throughBlock, '10101')
   })
 
   it('does not reuse progress from a different pinned snapshot hash', async () => {
