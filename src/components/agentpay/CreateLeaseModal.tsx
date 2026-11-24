@@ -62,7 +62,14 @@ export function CreateLeaseModal({ open, onClose, onCreated }: {
         allowlistEnabled: allowlist,
         initialDeposit: 0n,
       })
-      toast.success('Lease created', { description: result.hash })
+      if (result.leaseReadError) {
+        toast.warning('Transaction confirmed; lease not yet visible', {
+          description: `Arc confirmed ${result.hash}, but Orvynn could not read lease ${result.leaseId?.toString() ?? 'from the receipt'}: ${result.leaseReadError}`,
+          duration: 12000,
+        })
+      } else {
+        toast.success('Lease created', { description: result.hash })
+      }
       walletBalance.refetch()
       reset()
       try {
