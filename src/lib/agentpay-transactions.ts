@@ -12,10 +12,12 @@ import {
   formatUnits,
   type Address,
   type Hash,
+  decodeEventLog,
 } from 'viem'
 import { useAccount, usePublicClient, useWalletClient } from 'wagmi'
 import { ARC_USDC_ADDRESS } from '@/lib/wallet'
-import { useReadGate } from '@/lib/agentpay-reads'
+import { readLeaseSnapshot, useReadGate } from '@/lib/agentpay-reads'
+import type { Lease } from '@/lib/agentpay'
 import { agentPayAbi as agentPayReadAbi } from '@/lib/agentpay-abi'
 import { validatePaymentInput } from '../../agent/src/payment-validation'
 import { assertLeasePaymentAllowed } from '../../agent/src/lease-payment-guards'
@@ -24,6 +26,7 @@ import { agentPayWriteAbi } from '@/lib/agentpay-write-abi'
 export type TransactionResult = {
   hash: Hash
   blockNumber: bigint
+  leaseId?: bigint
 }
 
 export type TransactionState =
@@ -58,20 +61,21 @@ export function useAgentPayTransactions() {
     return { contract: gate.contract, chainId: gate.chainId, account: connectedAddress }
   }, [gate, walletClient, publicClient, connectedAddress, walletChainId])
 
-  const waitForSuccess = useCallback(async (hash: Hash): Promise<TransactionResult> => {
+  const waitForSuccess = useCallback(async (hash: Hash, refresh = true): Promise<TransactionResult> => {
     if (!publicClient) throw new Error('The Arc network client is unavailable.')
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
     if (receipt.status !== 'success') {
       throw new Error(`Transaction ${hash} was mined but reverted.`)
     }
-    // A successful receipt is the transaction completion point. Refresh dashboard
-    // data in the background so slow activity/history reads do not keep the
-    // wallet action spinner running after Arc has already confirmed the write.
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'], refetchType: 'active' }),
-      queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
-    ]).catch(() => undefined)
+    // A successful receipt is the transaction completion point. Most actions
+    // refresh in the background; createLease seeds its exact receipt-backed row.
+    if (refresh) {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'delegate-leases'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
+      ]).catch(() => undefined)
+    }
     return { hash, blockNumber: receipt.blockNumber }
   }, [publicClient, queryClient])
 
@@ -136,8 +140,39 @@ export function useAgentPayTransactions() {
       args: [args.delegate, args.cap, args.periodSeconds, args.expiry, args.allowlistEnabled, args.initialDeposit],
       account,
     })
-    return waitForSuccess(hash)
-  }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess])
+    const result = await waitForSuccess(hash, false)
+    if (!publicClient) return result
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash })
+      const createdLog = receipt.logs.find((log) => {
+        if (log.address.toLowerCase() !== contract.toLowerCase()) return false
+        try {
+          decodeEventLog({ abi: agentPayReadAbi, eventName: 'LeaseCreated', data: log.data, topics: log.topics })
+          return true
+        } catch {
+          return false
+        }
+      })
+      if (!createdLog) throw new Error('The confirmed receipt did not contain a LeaseCreated event.')
+      const created = decodeEventLog({ abi: agentPayReadAbi, eventName: 'LeaseCreated', data: createdLog.data, topics: createdLog.topics })
+      const leaseId = created.args.leaseId
+      const lease = await readLeaseSnapshot(publicClient, contract, leaseId, receipt.blockNumber)
+      queryClient.setQueryData<Lease[]>(['agentpay', 'leases', gate.ok ? gate.chainId : 0, contract, account], (current) => {
+        const next = [...(current ?? []).filter((item) => item.id !== lease.id), lease]
+        return next.sort((a, b) => Number(b.id) - Number(a.id))
+      })
+      void queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }).catch(() => undefined)
+      return { ...result, leaseId }
+    } catch {
+      // The transaction is already confirmed. Fall back to normal chain refresh;
+      // never turn a successful createLease write into a reported transaction failure.
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
+        queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
+      ]).catch(() => undefined)
+      return result
+    }
+  }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess, queryClient, gate])
 
   const deposit = useCallback(async (leaseId: bigint, amount: bigint): Promise<TransactionResult> => {
     if (leaseId < 0n || amount <= 0n) throw new Error('Lease ID and deposit amount are invalid.')
