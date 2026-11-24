@@ -23,7 +23,25 @@ const MAX_RPC_REQUESTS = 10_000
 const CONCURRENCY = 3
 const MAX_RATE_LIMIT_RETRIES = 5
 const RATE_LIMIT_BASE_DELAY_MS = 500
+const RPC_LOG_REQUEST_TIMEOUT_MS = 10_000
 const MAX_LEASE_IDS_PER_QUERY = 100
+
+class LogRequestTimeoutError extends Error {
+  constructor(from: bigint, to: bigint) {
+    super(`Arc RPC eth_getLogs request for blocks ${from}-${to} did not complete within ${RPC_LOG_REQUEST_TIMEOUT_MS / 1000} seconds.`)
+    this.name = 'LogRequestTimeoutError'
+  }
+}
+
+async function withLogRequestTimeout<T>(from: bigint, to: bigint, operation: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new LogRequestTimeoutError(from, to)), RPC_LOG_REQUEST_TIMEOUT_MS)
+  })
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  })
+}
 
 type AgentPayEvent = Extract<(typeof agentPayAbi)[number], { type: 'event' }>
 
@@ -172,7 +190,7 @@ async function fetchChunkedRanges<T>(
     let rateLimitRetries = 0
     while (true) {
       try {
-        return await fetchRange(from, to)
+        return await withLogRequestTimeout(from, to, fetchRange(from, to))
       } catch (error) {
         const detail = error instanceof Error ? error.message : String(error)
 
