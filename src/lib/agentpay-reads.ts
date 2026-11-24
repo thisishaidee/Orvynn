@@ -89,17 +89,22 @@ async function discoverLeases(
   // Lease IDs are sequential. Read the current contract counter and inspect
   // bounded storage batches instead of scanning years of LeaseCreated logs.
   // Every read is pinned to one block so owner/delegate and allowance data
-  // describe the same chain snapshot.
-  const snapshot = await client.getBlockNumber()
-  const [latest, nextLeaseId] = await Promise.all([
+  // describe the same chain snapshot. Give each RPC stage its own deadline so
+  // a failed provider is identified precisely instead of surfacing one generic timeout.
+  const snapshot = await withRpcReadTimeout('Arc Testnet block-height request (eth_blockNumber)', client.getBlockNumber())
+  const latest = await withRpcReadTimeout(
+    'Arc Testnet block-header request (eth_getBlockByNumber)',
     client.getBlock({ blockNumber: snapshot }),
+  )
+  const nextLeaseId = await withRpcReadTimeout(
+    'AgentPay nextLeaseId contract read (eth_call)',
     client.readContract({
       address: contract,
       abi: agentPayAbi,
       functionName: 'nextLeaseId',
       blockNumber: snapshot,
     }) as Promise<bigint>,
-  ])
+  )
 
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
@@ -116,11 +121,14 @@ async function discoverLeases(
 
     let rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }>
     try {
-      const values = await client.multicall({
-        contracts: contracts as never,
-        blockNumber: snapshot,
-        allowFailure: false,
-      }) as unknown[]
+      const values = await withRpcReadTimeout(
+        `AgentPay lease batch multicall for IDs ${ids[0]}-${ids[ids.length - 1]} (eth_call)`,
+        client.multicall({
+          contracts: contracts as never,
+          blockNumber: snapshot,
+          allowFailure: false,
+        }) as Promise<unknown[]>,
+      )
       rows = ids.map((id, index) => ({
         id,
         row: values[index * 2] as LeaseTuple,
@@ -129,16 +137,22 @@ async function discoverLeases(
     } catch (error) {
       // Do not fan out after a genuine throttle. For unsupported Multicall,
       // fall back sequentially by lease while keeping each pair bounded.
-      if (isRateLimitError(error)) throw error
+      if (isRateLimitError(error) || error instanceof RpcReadTimeoutError) throw error
       rows = []
       for (const id of ids) {
         const [row, remaining] = await Promise.all([
-          client.readContract({
-            address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
-          }) as Promise<LeaseTuple>,
-          client.readContract({
-            address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
-          }) as Promise<bigint>,
+          withRpcReadTimeout(
+            `AgentPay leases(${id}) contract read (eth_call)`,
+            client.readContract({
+              address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
+            }) as Promise<LeaseTuple>,
+          ),
+          withRpcReadTimeout(
+            `AgentPay remainingAllowance(${id}) contract read (eth_call)`,
+            client.readContract({
+              address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
+            }) as Promise<bigint>,
+          ),
         ])
         rows.push({ id, row, remaining })
       }
@@ -247,6 +261,25 @@ async function discoverLeases(
       : fundingHistoryAvailable ? false : null
     return toLease(id, row, remaining, allowed, everFunded, latest.timestamp)
   }).sort((a, b) => Number(b.id) - Number(a.id))
+}
+
+const RPC_READ_TIMEOUT_MS = 10_000
+
+class RpcReadTimeoutError extends Error {
+  constructor(stage: string) {
+    super(`${stage} did not complete within ${RPC_READ_TIMEOUT_MS / 1000} seconds.`)
+    this.name = 'RpcReadTimeoutError'
+  }
+}
+
+async function withRpcReadTimeout<T>(stage: string, operation: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new RpcReadTimeoutError(stage)), RPC_READ_TIMEOUT_MS)
+  })
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  })
 }
 
 const LEASE_DISCOVERY_TIMEOUT_MS = 25_000
