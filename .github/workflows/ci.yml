@@ -2,7 +2,7 @@ name: AgentPay CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, integration/event-history-cache-main]
   push:
     branches: [main, studio-sync, feature/payment-integration]
 
