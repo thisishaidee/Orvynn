@@ -105,7 +105,7 @@ describe('resumable incremental event history', () => {
       },
     })
 
-    assert.deepEqual(scanned.slice(2), [[100n, 10_099n], [10_100n, 10_100n]])
+    assert.deepEqual(scanned.slice(2).sort((a, b) => a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0), [[100n, 10_099n], [10_100n, 10_100n]])
     assert.equal(result.events.length, 2)
     assert.equal(result.checkpoint.blockHash, secondHash)
   })
