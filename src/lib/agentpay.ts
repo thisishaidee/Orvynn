@@ -85,7 +85,7 @@ export interface DataSource<T> {
   /** A background refresh failed while an older local snapshot remains visible. */
   refreshError?: string
   /** Retry the underlying read without navigating away from the current section. */
-  refetch?: () => void
+  refetch?: () => Promise<void>
 }
 
 export { useOwnerLeases as useLeases, useOwnerActivityQuery as useActivity, useDelegateLeases } from '@/lib/agentpay-reads'
