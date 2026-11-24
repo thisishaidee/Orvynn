@@ -149,11 +149,15 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
       blockHash: snapshotHashAfter,
       complete: true,
     })
-    writeStoredEventHistory(storage, key, input.identity, checkpoint, events)
-    // Only discard progress after the complete snapshot and checkpoint have
-    // been validated and committed. If storage rejects the final cache write,
-    // the progress ranges remain available for the next attempt.
-    if (readStoredEventHistory<T>(storage, key, input.identity)) {
+    const persisted = writeStoredEventHistory(storage, key, input.identity, checkpoint, events)
+    // Only discard progress after this exact snapshot checkpoint was committed.
+    // An older valid checkpoint may still exist if the new write hit quota.
+    const verified = persisted && readStoredEventHistory<T>(storage, key, input.identity)
+    if (
+      verified &&
+      verified.checkpoint.throughBlock === checkpoint.throughBlock &&
+      verified.checkpoint.blockHash.toLowerCase() === checkpoint.blockHash.toLowerCase()
+    ) {
       removeProgress(storage, progressKeys)
     }
     return { events, checkpoint, mode: plan.mode }
