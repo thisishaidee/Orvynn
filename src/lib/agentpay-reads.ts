@@ -305,7 +305,7 @@ async function withRpcReadTimeout<T>(stage: string, operation: Promise<T>): Prom
   })
 }
 
-const LEASE_DISCOVERY_TIMEOUT_MS = 25_000
+const LEASE_DISCOVERY_TIMEOUT_MS = 60_000
 
 /**
  * A stalled RPC must not leave the dashboard in a permanent loading state.
@@ -316,7 +316,7 @@ function withLeaseDiscoveryTimeout<T>(operation: Promise<T>): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error('Arc RPC did not finish loading leases within 25 seconds. Check the Arc Testnet RPC connection and retry.'))
+      reject(new Error('Arc RPC did not finish loading leases within 60 seconds. Check the Arc RPC connection and retry.'))
     }, LEASE_DISCOVERY_TIMEOUT_MS)
   })
   return Promise.race([operation, timeout]).finally(() => {
