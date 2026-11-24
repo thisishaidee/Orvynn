@@ -86,6 +86,21 @@ describe('event history cache primitives', () => {
     assert.equal(values.has('key'), false)
   })
 
+  it('refuses to write malformed event records', () => {
+    const values = new Map<string, string>([['key', 'previous-cache-value']])
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+
+    assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, [
+      { blockNumber: 1200n, transactionHash: '0xabc', logIndex: 0 },
+    ]), false)
+    assert.equal(values.get('key'), 'previous-cache-value')
+  })
+
   it('skips oversized cache writes without replacing the existing checkpoint', () => {
     const values = new Map<string, string>([['key', 'previous-cache-value']])
     const storage: EventHistoryStorage = {
@@ -162,7 +177,7 @@ describe('event history cache primitives', () => {
       },
       scan: async (from, to) => {
         scanned.push([from, to])
-        return [{ blockNumber: to, transactionHash: `0x${scanned.length}`, logIndex: 0 }]
+        return [{ blockNumber: to, transactionHash: `0x${String(scanned.length).padStart(64, '0')}`, logIndex: 0 }]
       },
     })
     assert.equal(result.mode, 'rebuild')
