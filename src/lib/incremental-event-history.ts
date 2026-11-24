@@ -25,28 +25,33 @@ export type IncrementalHistoryResult<T> = {
 const PROGRESS_RANGE_SIZE = 10_000n
 const MAX_PROGRESS_CHARS = 1_500_000
 
-function progressKey(baseKey: string, snapshot: bigint, hash: string, from: bigint, to: bigint): string {
-  return `${baseKey}:progress:${snapshot}:${hash.toLowerCase()}:${from}-${to}`
+function progressKey(baseKey: string, from: bigint, to: bigint): string {
+  // Stable as the chain tip advances; cached ranges are hash-verified before reuse.
+  return baseKey + ':progress:' + from.toString() + '-' + to.toString()
 }
 
-function readProgress<T extends EventHistoryItem>(
+async function readProgress<T extends EventHistoryItem>(
   storage: EventHistoryStorage | undefined,
   key: string,
-): T[] | undefined {
+  toBlock: bigint,
+  getBlockHash: (block: bigint) => Promise<string>,
+): Promise<T[] | undefined> {
   if (!storage) return undefined
   try {
     const raw = storage.getItem(key)
     if (!raw) return undefined
-    if (raw.length > MAX_PROGRESS_CHARS) {
-      storage.removeItem(key)
-      return undefined
-    }
-    const events = parseEventHistory<T>(raw)
-    if (!events) {
-      storage.removeItem(key)
-      return undefined
-    }
-    // Validate every cached event before allowing it to satisfy a scan range.
+    if (raw.length > MAX_PROGRESS_CHARS) { storage.removeItem(key); return undefined }
+    const envelope: unknown = JSON.parse(raw)
+    if (!envelope || typeof envelope !== 'object') { storage.removeItem(key); return undefined }
+    const value = envelope as { version?: unknown; throughBlock?: unknown; blockHash?: unknown; events?: unknown }
+    if (value.version !== 1 || value.throughBlock !== toBlock.toString() ||
+      typeof value.blockHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value.blockHash) ||
+      typeof value.events !== 'string') { storage.removeItem(key); return undefined }
+    // Reuse across newer snapshots only while the range's end block remains canonical.
+    const observedHash = await getBlockHash(toBlock)
+    if (observedHash.toLowerCase() !== value.blockHash.toLowerCase()) { storage.removeItem(key); return undefined }
+    const events = parseEventHistory<T>(value.events)
+    if (!events) { storage.removeItem(key); return undefined }
     return mergeEventHistory(events)
   } catch {
     try { storage.removeItem(key) } catch { /* Storage may be unavailable. */ }
@@ -55,17 +60,14 @@ function readProgress<T extends EventHistoryItem>(
 }
 
 function writeProgress<T extends EventHistoryItem>(
-  storage: EventHistoryStorage | undefined,
-  key: string,
-  events: readonly T[],
+  storage: EventHistoryStorage | undefined, key: string, toBlock: bigint, blockHash: string, events: readonly T[],
 ): void {
-  if (!storage) return
+  if (!storage || !/^0x[0-9a-f]{64}$/i.test(blockHash)) return
   try {
-    const serialized = serializeEventHistory(events)
+    const serialized = JSON.stringify({ version: 1, throughBlock: toBlock.toString(),
+      blockHash: blockHash.toLowerCase(), events: serializeEventHistory(events) })
     if (serialized.length <= MAX_PROGRESS_CHARS) storage.setItem(key, serialized)
-  } catch {
-    // Progress persistence is best-effort; it must never turn a successful RPC read into failure.
-  }
+  } catch { /* Progress persistence is best-effort. */ }
 }
 
 function removeProgress(storage: EventHistoryStorage | undefined, keys: readonly string[]): void {
@@ -116,9 +118,9 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
       const to = from + PROGRESS_RANGE_SIZE - 1n > plan.toBlock
         ? plan.toBlock
         : from + PROGRESS_RANGE_SIZE - 1n
-      const rangeKey = progressKey(key, input.snapshotBlock, snapshotHashBefore, from, to)
+      const rangeKey = progressKey(key, from, to)
       progressKeys.push(rangeKey)
-      const cachedRange = readProgress<T>(storage, rangeKey)
+      const cachedRange = await readProgress<T>(storage, rangeKey, to, input.getBlockHash)
       if (cachedRange) {
         fresh.push(...cachedRange)
       } else {
@@ -126,7 +128,8 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
         // Validate before persisting. A malformed/incomplete response cannot
         // become resumable progress or a valid empty range.
         const validatedRange = mergeEventHistory(completedRange)
-        writeProgress(storage, rangeKey, validatedRange)
+        const rangeHash = await input.getBlockHash(to)
+        writeProgress(storage, rangeKey, to, rangeHash, validatedRange)
         fresh.push(...validatedRange)
       }
       from = to + 1n
