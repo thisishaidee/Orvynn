@@ -77,6 +77,24 @@ function toLease(id: bigint, row: LeaseTuple, remaining: bigint, allowed: Addres
   }
 }
 
+/** Read one newly-created lease directly at its receipt block. */
+export async function readLeaseSnapshot(
+  client: PublicClient,
+  contract: Address,
+  id: bigint,
+  blockNumber: bigint,
+): Promise<Lease> {
+  const [row, remaining, block] = await Promise.all([
+    client.readContract({ address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber }) as Promise<LeaseTuple>,
+    client.readContract({ address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber }) as Promise<bigint>,
+    client.getBlock({ blockNumber }),
+  ])
+  if (row[0] === '0x0000000000000000000000000000000000000000') {
+    throw new Error(`Lease ${id.toString()} was not present at its confirmed receipt block.`)
+  }
+  return toLease(id, row, remaining, row[9] ? [] : undefined, row[8] > 0n, block.timestamp)
+}
+
 async function discoverLeases(
   client: PublicClient,
   contract: Address,
