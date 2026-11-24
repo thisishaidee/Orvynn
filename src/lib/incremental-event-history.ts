@@ -135,7 +135,9 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
         // Validate before persisting. A malformed/incomplete response cannot
         // become resumable progress or a valid empty range.
         const validatedRange = mergeEventHistory(completedRange)
-        const rangeHash = await input.getBlockHash(to)
+        const rangeHash = to === input.snapshotBlock
+          ? snapshotHashBefore
+          : await input.getBlockHash(to)
         writeProgress(storage, rangeKey, to, rangeHash, validatedRange)
         fresh.push(...validatedRange)
       }
