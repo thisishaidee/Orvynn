@@ -23,6 +23,7 @@ export type IncrementalHistoryResult<T> = {
 }
 
 const PROGRESS_RANGE_SIZE = 10_000n
+const PROGRESS_CONCURRENCY = 3
 const MAX_PROGRESS_CHARS = 1_500_000
 
 function progressKey(baseKey: string, from: bigint, to: bigint): string {
@@ -121,27 +122,41 @@ export async function loadIncrementalEventHistory<T extends EventHistoryItem>(in
 
     const progressKeys: string[] = []
     const fresh: T[] = []
+    const ranges: Array<{ from: bigint; to: bigint; key: string }> = []
     for (let from = plan.fromBlock; from <= plan.toBlock;) {
       const to = from + PROGRESS_RANGE_SIZE - 1n > plan.toBlock
         ? plan.toBlock
         : from + PROGRESS_RANGE_SIZE - 1n
       const rangeKey = progressKey(key, from, to)
       progressKeys.push(rangeKey)
-      const cachedRange = await readProgress<T>(storage, rangeKey, to, input.getBlockHash)
-      if (cachedRange) {
-        fresh.push(...cachedRange)
-      } else {
-        const completedRange = await input.scan(from, to)
-        // Validate before persisting. A malformed/incomplete response cannot
-        // become resumable progress or a valid empty range.
-        const validatedRange = mergeEventHistory(completedRange)
-        const rangeHash = to === input.snapshotBlock
-          ? snapshotHashBefore
-          : await input.getBlockHash(to)
-        writeProgress(storage, rangeKey, to, rangeHash, validatedRange)
-        fresh.push(...validatedRange)
-      }
+      ranges.push({ from, to, key: rangeKey })
       from = to + 1n
+    }
+
+    const loadRange = async (range: { from: bigint; to: bigint; key: string }): Promise<T[]> => {
+      const cachedRange = await readProgress<T>(storage, range.key, range.to, input.getBlockHash)
+      if (cachedRange) return cachedRange
+      const completedRange = await input.scan(range.from, range.to)
+      // Validate before persisting. A malformed/incomplete response cannot
+      // become resumable progress or a valid empty range.
+      const validatedRange = mergeEventHistory(completedRange)
+      const rangeHash = range.to === input.snapshotBlock
+        ? snapshotHashBefore
+        : await input.getBlockHash(range.to)
+      writeProgress(storage, range.key, range.to, rangeHash, validatedRange)
+      return validatedRange
+    }
+
+    // Keep three independent ranges in flight. Each range persists as soon as
+    // it completes, so one failed provider request does not discard sibling progress.
+    for (let offset = 0; offset < ranges.length; offset += PROGRESS_CONCURRENCY) {
+      const batch = ranges.slice(offset, offset + PROGRESS_CONCURRENCY)
+      const settled = await Promise.allSettled(batch.map(loadRange))
+      const failed = settled.find((item): item is PromiseRejectedResult => item.status === 'rejected')
+      if (failed) throw failed.reason
+      for (const item of settled) {
+        if (item.status === 'fulfilled') fresh.push(...item.value)
+      }
     }
 
     const events = plan.mode === 'incremental' && stored
