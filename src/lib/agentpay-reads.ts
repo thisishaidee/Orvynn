@@ -249,6 +249,25 @@ async function discoverLeases(
   }).sort((a, b) => Number(b.id) - Number(a.id))
 }
 
+const LEASE_DISCOVERY_TIMEOUT_MS = 25_000
+
+/**
+ * A stalled RPC must not leave the dashboard in a permanent loading state.
+ * This bounds the UI query while preserving the original RPC error when it
+ * completes first. A timed-out read is never treated as an empty lease list.
+ */
+function withLeaseDiscoveryTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Arc RPC did not finish loading leases within 25 seconds. Check the Arc Testnet RPC connection and retry.'))
+    }, LEASE_DISCOVERY_TIMEOUT_MS)
+  })
+  return Promise.race([operation, timeout]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId)
+  })
+}
+
 const DELEGATE_LEASE_CACHE_VERSION = 1
 
 function leaseCacheKey(role: 'owner' | 'delegate', chainId: number, contract: Address, wallet: Address): string {
@@ -386,13 +405,17 @@ export function useOwnerLeases(): DataSource<Lease> {
     enabled: gate.ok,
     staleTime: 0,
     gcTime: 5 * 60_000,
-    retry: 1,
+    // A stuck provider must become a visible error instead of an endless skeleton.
+    // The user can explicitly retry after the RPC fallback has had time to recover.
+    retry: false,
     // Render the last known lease snapshot immediately; it is never used to authorise a transaction.
     initialData: () => cacheKey ? readDelegateLeaseCache(cacheKey) : undefined,
     initialDataUpdatedAt: 0,
     queryFn: () => {
       if (!gate.ok) return []
-      return discoverLeases(gate.client, gate.contract, gate.chainId, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId))
+      return withLeaseDiscoveryTimeout(
+        discoverLeases(gate.client, gate.contract, gate.chainId, { owner: gate.address }, getAgentPayEventStartBlock(gate.chainId)),
+      )
     },
   })
 
