@@ -86,25 +86,114 @@ async function discoverLeases(
   fromBlock: bigint,
   includeAllowlistHistory = true,
 ): Promise<Lease[]> {
-  // Lease IDs are sequential. Read the current contract counter and inspect
-  // bounded storage batches instead of scanning years of LeaseCreated logs.
-  // Every read is pinned to one block so owner/delegate and allowance data
-  // describe the same chain snapshot. Give each RPC stage its own deadline so
-  // a failed provider is identified precisely instead of surfacing one generic timeout.
+  // Discover only this wallet's lease IDs from the indexed LeaseCreated event.
+  // Scanning every sequential ID makes one owner's dashboard depend on all
+  // leases ever created by every wallet. The event filter is indexed by owner
+  // and delegate, then each matching ID is re-read from contract storage at
+  // the same snapshot block before it is displayed.
   const snapshot = await withRpcReadTimeout('Arc Testnet block-height request (eth_blockNumber)', client.getBlockNumber())
   const latest = await withRpcReadTimeout(
     'Arc Testnet block-header request (eth_getBlockByNumber)',
     client.getBlock({ blockNumber: snapshot }),
   )
-  const nextLeaseId = await withRpcReadTimeout(
-    'AgentPay nextLeaseId contract read (eth_call)',
-    client.readContract({
-      address: contract,
-      abi: agentPayAbi,
-      functionName: 'nextLeaseId',
-      blockNumber: snapshot,
-    }) as Promise<bigint>,
+  const walletFilter = filter.owner ?? filter.delegate
+  const historyScope = filter.owner ? 'owner-lease-created' as const : 'delegate-lease-created' as const
+  const createdLogs = await withRpcReadTimeout(
+    `AgentPay ${filter.owner ? 'owner' : 'delegate'} LeaseCreated history scan (eth_getLogs)`,
+    loadIncrementalEventHistory({
+      identity: {
+        chainId,
+        contract,
+        wallet: walletFilter!,
+        scope: historyScope,
+      },
+      deploymentBlock: fromBlock,
+      snapshotBlock: snapshot,
+      getBlockHash: async (block) => {
+        const result = await withRpcReadTimeout(
+          `Arc RPC block-hash verification at block ${block} (eth_getBlockByNumber)`,
+          client.getBlock({ blockNumber: block }),
+        )
+        if (!result.hash) throw new Error(`Arc RPC did not return a hash for block ${block}.`)
+        return result.hash
+      },
+      scan: async (scanFrom, scanTo) => withRpcReadTimeout(
+        'AgentPay filtered LeaseCreated event scan (eth_getLogs)',
+        getLogsChunked(client, {
+          address: contract,
+          event: eventAbi('LeaseCreated') as never,
+          args: filter.owner ? { owner: filter.owner } : { delegate: filter.delegate },
+          fromBlock: scanFrom,
+          toBlock: scanTo,
+        }),
+      ),
+    }),
   )
+  const leaseIds = [...new Set(createdLogs.events.flatMap((log) => {
+    const leaseId = (log as unknown as { args: { leaseId?: bigint } }).args.leaseId
+    return leaseId !== undefined ? [leaseId] : []
+  }))].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)
+
+  const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
+  const batchSize = 5
+
+  for (let offset = 0; offset < leaseIds.length; offset += batchSize) {
+    const ids = leaseIds.slice(offset, offset + batchSize)
+    const contracts = ids.flatMap((id) => [
+      { address: contract, abi: agentPayAbi, functionName: 'leases' as const, args: [id] as const },
+      { address: contract, abi: agentPayAbi, functionName: 'remainingAllowance' as const, args: [id] as const },
+    ])
+
+    let rows: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }>
+    try {
+      const values = await withRpcReadTimeout(
+        `AgentPay lease batch multicall for IDs ${ids[0]}-${ids[ids.length - 1]} (eth_call)`,
+        client.multicall({
+          contracts: contracts as never,
+          blockNumber: snapshot,
+          allowFailure: false,
+        }) as Promise<unknown[]>,
+      )
+      rows = ids.map((id, index) => ({
+        id,
+        row: values[index * 2] as LeaseTuple,
+        remaining: values[index * 2 + 1] as bigint,
+      }))
+    } catch (error) {
+      // Do not fan out after a genuine throttle. For unsupported Multicall,
+      // fall back sequentially by lease while keeping each pair bounded.
+      if (isRateLimitError(error) || error instanceof RpcReadTimeoutError) throw error
+      rows = []
+      for (const id of ids) {
+        const [row, remaining] = await Promise.all([
+          withRpcReadTimeout(
+            `AgentPay leases(${id}) contract read (eth_call)`,
+            client.readContract({
+              address: contract, abi: agentPayAbi, functionName: 'leases', args: [id], blockNumber: snapshot,
+            }) as Promise<LeaseTuple>,
+          ),
+          withRpcReadTimeout(
+            `AgentPay remainingAllowance(${id}) contract read (eth_call)`,
+            client.readContract({
+              address: contract, abi: agentPayAbi, functionName: 'remainingAllowance', args: [id], blockNumber: snapshot,
+            }) as Promise<bigint>,
+          ),
+        ])
+        rows.push({ id, row, remaining })
+      }
+    }
+
+    for (const item of rows) {
+      const matches = filter.owner
+        ? item.row[0].toLowerCase() === filter.owner.toLowerCase()
+        : filter.delegate
+          ? item.row[1].toLowerCase() === filter.delegate.toLowerCase()
+          : false
+      if (matches && item.row[0] !== '0x0000000000000000000000000000000000000000') {
+        matching.push(item)
+      }
+    }
+  }
 
   const matching: Array<{ id: bigint; row: LeaseTuple; remaining: bigint }> = []
   const batchSize = 5
