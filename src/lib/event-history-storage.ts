@@ -64,7 +64,7 @@ function isCachedEventArray(value: unknown): value is unknown[] {
   return Array.isArray(value) && value.every((event) => {
     if (!event || typeof event !== 'object') return false
     const item = event as { blockNumber?: unknown; transactionHash?: unknown; logIndex?: unknown }
-    return typeof item.blockNumber === 'bigint' &&
+    return typeof item.blockNumber === 'bigint' && item.blockNumber >= 0n &&
       typeof item.transactionHash === 'string' && /^0x[0-9a-f]{64}$/i.test(item.transactionHash) &&
       typeof item.logIndex === 'number' && Number.isSafeInteger(item.logIndex) && item.logIndex >= 0
   })
