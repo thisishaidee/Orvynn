@@ -172,7 +172,10 @@ export function LeasesPage() {
           </span>
         </Notice>
       )}
-      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={() => setOpenLeaseIds([])} />
+      <CreateLeaseModal open={createOpen} onClose={() => setCreateOpen(false)} onCreated={async () => {
+        setOpenLeaseIds([])
+        await source.refetch?.()
+      }} />
       <ConfirmDialog
         open={Boolean(revokeTarget)}
         title="Revoke this lease?"
