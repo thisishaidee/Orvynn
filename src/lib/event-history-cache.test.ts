@@ -62,6 +62,19 @@ describe('event history cache primitives', () => {
     assert.deepEqual(readStoredEventHistory<typeof events[number]>(storage, 'key', identity), { checkpoint: saved, events })
   })
 
+  it('preserves a valid empty history cache', () => {
+    const values = new Map<string, string>()
+    const storage: EventHistoryStorage = {
+      getItem: (key) => values.get(key) ?? null,
+      setItem: (key, value) => { values.set(key, value) },
+      removeItem: (key) => { values.delete(key) },
+    }
+    const saved = advanceEventHistoryCheckpoint({ identity, throughBlock: 1200n, blockHash: hashB, complete: true })
+
+    assert.equal(writeStoredEventHistory(storage, 'key', identity, saved, []), true)
+    assert.deepEqual(readStoredEventHistory(storage, 'key', identity), { checkpoint: saved, events: [] })
+  })
+
   it('removes a corrupt outer cache envelope so it is not retried forever', () => {
     const values = new Map<string, string>([['key', 'not-json']])
     const storage: EventHistoryStorage = {
