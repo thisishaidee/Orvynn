@@ -116,13 +116,14 @@ export function mergeEventHistory<T extends EventHistoryItem>(...batches: readon
   for (const batch of batches) {
     for (const item of batch) {
       if (
-        !item.transactionHash ||
         typeof item.transactionHash !== 'string' ||
+        !/^0x[0-9a-f]{64}$/i.test(item.transactionHash) ||
+        typeof item.blockNumber !== 'bigint' ||
+        item.blockNumber < 0n ||
         item.logIndex === null ||
         item.logIndex === undefined ||
         !Number.isSafeInteger(item.logIndex) ||
-        item.logIndex < 0 ||
-        (item.blockNumber !== null && typeof item.blockNumber !== 'bigint')
+        item.logIndex < 0
       ) {
         throw new Error('Cannot cache an event without valid block and log identity metadata.')
       }
