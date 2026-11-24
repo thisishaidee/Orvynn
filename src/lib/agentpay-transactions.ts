@@ -143,6 +143,7 @@ export function useAgentPayTransactions() {
     })
     const result = await waitForSuccess(hash, false)
     if (!publicClient) return result
+    let leaseId: bigint | undefined
     try {
       const receipt = await publicClient.getTransactionReceipt({ hash })
       const createdLog = receipt.logs.find((log) => {
@@ -156,7 +157,7 @@ export function useAgentPayTransactions() {
       })
       if (!createdLog) throw new Error('The confirmed receipt did not contain a LeaseCreated event.')
       const created = decodeEventLog({ abi: agentPayReadAbi, eventName: 'LeaseCreated', data: createdLog.data, topics: createdLog.topics })
-      const leaseId = created.args.leaseId
+      leaseId = created.args.leaseId
       // First read at the exact receipt block. If the RPC has not made that
       // historical state available yet, retry against the latest confirmed head.
       let lease: Lease
@@ -180,7 +181,7 @@ export function useAgentPayTransactions() {
         queryClient.invalidateQueries({ queryKey: ['agentpay', 'leases'], refetchType: 'active' }),
         queryClient.invalidateQueries({ queryKey: ['agentpay', 'activity'], refetchType: 'active' }),
       ]).catch(() => undefined)
-      return { ...result, leaseReadError }
+      return { ...result, leaseId, leaseReadError }
     }
   }, [assertReady, getUsdcAllowance, walletClient, publicClient, waitForSuccess, queryClient, gate])
 
